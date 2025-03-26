@@ -1,0 +1,146 @@
+// src/pages/sierras/SierraCreate.jsx
+import React, { useState } from 'react';
+import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
+import {
+  Box,
+  Typography,
+  Button,
+  Breadcrumbs,
+  Link as MuiLink,
+  Alert
+} from '@mui/material';
+import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
+import SierraForm from '../../components/forms/SierraForm';
+import sierraService from '../../services/sierraService';
+
+const SierraCreate = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Verificar si hay cliente/sucursal preseleccionados (pasados a través de location.state)
+  const clientePreseleccionado = location.state?.clienteId || null;
+  const clienteNombre = location.state?.clienteNombre || null;
+  const sucursalPreseleccionada = location.state?.sucursalId || null;
+  const sucursalNombre = location.state?.sucursalNombre || null;
+
+  const handleSubmit = async (data) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await sierraService.createSierra(data);
+      
+      if (response.success) {
+        // Opcionalmente esperar un poco para mostrar mensaje de éxito
+        setTimeout(() => {
+          navigate(`/sierras/${response.data.id}`, { 
+            state: { message: 'Sierra creada correctamente' } 
+          });
+        }, 1500);
+        return { success: true };
+      } else {
+        setError(response.error || 'Error al crear la sierra');
+        return { success: false };
+      }
+    } catch (err) {
+      console.error('Error al crear sierra:', err);
+      setError('Error al crear la sierra. Por favor, inténtelo de nuevo.');
+      return { success: false };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    if (sucursalPreseleccionada) {
+      navigate(`/sucursales/${sucursalPreseleccionada}`);
+    } else if (clientePreseleccionado) {
+      navigate(`/clientes/${clientePreseleccionado}`);
+    } else {
+      navigate('/sierras');
+    }
+  };
+
+  return (
+    <Box>
+      {/* Navegación de migas de pan */}
+      <Breadcrumbs sx={{ mb: 2 }}>
+        <MuiLink component={RouterLink} to="/" underline="hover" color="inherit">
+          Dashboard
+        </MuiLink>
+        <MuiLink component={RouterLink} to="/sierras" underline="hover" color="inherit">
+          Sierras
+        </MuiLink>
+        {clientePreseleccionado && (
+          <MuiLink 
+            component={RouterLink} 
+            to={`/clientes/${clientePreseleccionado}`} 
+            underline="hover" 
+            color="inherit"
+          >
+            {clienteNombre || 'Cliente'}
+          </MuiLink>
+        )}
+        {sucursalPreseleccionada && (
+          <MuiLink 
+            component={RouterLink} 
+            to={`/sucursales/${sucursalPreseleccionada}`} 
+            underline="hover" 
+            color="inherit"
+          >
+            {sucursalNombre || 'Sucursal'}
+          </MuiLink>
+        )}
+        <Typography color="text.primary">Nueva Sierra</Typography>
+      </Breadcrumbs>
+
+      {/* Encabezado */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4" component="h1">
+          {sucursalPreseleccionada 
+            ? `Nueva Sierra para ${sucursalNombre || 'Sucursal'}` 
+            : clientePreseleccionado 
+            ? `Nueva Sierra para ${clienteNombre || 'Cliente'}`
+            : 'Registrar Nueva Sierra'}
+        </Typography>
+        <Button
+          variant="outlined"
+          startIcon={<ArrowBackIcon />}
+          onClick={handleCancel}
+        >
+          {sucursalPreseleccionada 
+            ? 'Volver a la Sucursal' 
+            : clientePreseleccionado
+            ? 'Volver al Cliente'
+            : 'Volver a Sierras'}
+        </Button>
+      </Box>
+
+      {/* Información adicional si viene desde un cliente/sucursal */}
+      {(clientePreseleccionado || sucursalPreseleccionada) && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Está registrando una nueva sierra para 
+          {sucursalPreseleccionada 
+            ? ` la sucursal ${sucursalNombre || 'seleccionada'}`
+            : ` el cliente ${clienteNombre || 'seleccionado'}`
+          }. 
+          {sucursalPreseleccionada && ' La sucursal ya está seleccionada en el formulario.'}
+        </Alert>
+      )}
+
+      {/* Formulario */}
+      <SierraForm 
+        onSubmit={handleSubmit} 
+        onCancel={handleCancel} 
+        loading={loading} 
+        error={error} 
+        sucursalPreseleccionada={sucursalPreseleccionada}
+        clientePreseleccionado={clientePreseleccionado}
+      />
+    </Box>
+  );
+};
+
+export default SierraCreate;
