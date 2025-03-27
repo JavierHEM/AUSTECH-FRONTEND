@@ -65,6 +65,13 @@ const UserList = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // Mapeo de IDs de rol a nombres
+  const rolMapping = {
+    1: 'Gerente',
+    2: 'Administrador',
+    3: 'Cliente'
+  };
+
   // Función para cargar los datos
   const loadData = async () => {
     setLoading(true);
@@ -73,26 +80,33 @@ const UserList = () => {
       // Cargar usuarios
       const usersResponse = await userService.getAllUsers();
       if (usersResponse.success) {
-        setUsers(usersResponse.data);
+        // Mapear roles de los usuarios según rolMapping
+        const mappedUsers = usersResponse.data.map(user => ({
+          ...user,
+          rol: user.rol_id ? rolMapping[user.rol_id] : user.rol || 'Desconocido'
+        }));
+        setUsers(mappedUsers);
       } else {
         setError('Error al cargar los usuarios');
       }
       
-      // Cargar roles para el filtro
-      const rolesResponse = await catalogoService.getRoles();
-      if (rolesResponse.success) {
-        setRoles(rolesResponse.data);
-      }
+      // Configurar roles para el filtro usando el rolMapping
+      const roleOptions = Object.entries(rolMapping).map(([id, nombre]) => ({
+        id: parseInt(id, 10),
+        nombre
+      }));
+      setRoles(roleOptions);
     } catch (err) {
       console.error('Error al obtener datos:', err);
       setError('Error al cargar los datos. Por favor, inténtelo de nuevo.');
       
-      // Para demo, simulación
-      setUsers([
+      // Para demo, simulación de datos
+      const demoUsers = [
         { 
           id: 1, 
           nombre: 'Admin Usuario', 
           email: 'admin@example.com', 
+          rol_id: 2,
           rol: 'Administrador',
           activo: true 
         },
@@ -100,6 +114,7 @@ const UserList = () => {
           id: 2, 
           nombre: 'Gerente Usuario', 
           email: 'gerente@example.com', 
+          rol_id: 1,
           rol: 'Gerente',
           activo: true 
         },
@@ -107,6 +122,7 @@ const UserList = () => {
           id: 3, 
           nombre: 'Cliente Usuario', 
           email: 'cliente@example.com', 
+          rol_id: 3,
           rol: 'Cliente',
           activo: true 
         },
@@ -114,16 +130,20 @@ const UserList = () => {
           id: 4, 
           nombre: 'Usuario Inactivo', 
           email: 'inactivo@example.com', 
+          rol_id: 3,
           rol: 'Cliente',
           activo: false 
         }
-      ]);
+      ];
       
-      setRoles([
-        { id: 1, nombre: 'Administrador' },
-        { id: 2, nombre: 'Gerente' },
+      setUsers(demoUsers);
+      
+      const demoRoles = [
+        { id: 1, nombre: 'Gerente' },
+        { id: 2, nombre: 'Administrador' },
         { id: 3, nombre: 'Cliente' }
-      ]);
+      ];
+      setRoles(demoRoles);
     } finally {
       setLoading(false);
     }
@@ -155,8 +175,10 @@ const UserList = () => {
     
     const matchesSearch = searchFields.includes(searchTerm.toLowerCase());
     
-    // Filtrar por rol
-    const matchesRole = roleFilter === '' || user.rol === roleFilter;
+    // Filtrar por rol (usando el ID del rol o el nombre)
+    const matchesRole = roleFilter === '' || 
+                        user.rol_id === parseInt(roleFilter, 10) || 
+                        user.rol === roleFilter;
     
     return matchesSearch && matchesRole;
   });
@@ -280,7 +302,7 @@ const UserList = () => {
                 >
                   <MenuItem value="">Todos los roles</MenuItem>
                   {roles.map((role) => (
-                    <MenuItem key={role.id} value={role.nombre}>
+                    <MenuItem key={role.id} value={role.id.toString()}>
                       {role.nombre}
                     </MenuItem>
                   ))}
@@ -356,29 +378,36 @@ const UserList = () => {
                         </TableCell>
                         <TableCell align="right">
                           <Tooltip title="Ver detalle">
-                            <IconButton
-                              color="primary"
-                              onClick={() => navigate(`/usuarios/${user.id}`)}
-                            >
-                              <ViewIcon />
-                            </IconButton>
+                            <span>
+                              <IconButton
+                                color="primary"
+                                onClick={() => navigate(`/usuarios/${user.id}`)}
+                              >
+                                <ViewIcon />
+                              </IconButton>
+                            </span> 
                           </Tooltip>
                           <Tooltip title="Editar">
-                            <IconButton
-                              color="secondary"
-                              onClick={() => navigate(`/usuarios/${user.id}/editar`)}
-                            >
-                              <EditIcon />
-                            </IconButton>
+                          <span>
+                              <IconButton
+                                color="secondary"
+                                onClick={() => navigate(`/usuarios/${user.id}/editar`)}
+                              >
+                                <EditIcon />
+                              </IconButton>
+                            </span> 
                           </Tooltip>
+
                           <Tooltip title="Eliminar">
-                            <IconButton
-                              color="error"
-                              onClick={() => handleDeleteUser(user)}
-                              disabled={user.rol === 'Administrador'}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
+                          <span>
+                              <IconButton
+                                color="error"
+                                onClick={() => handleDeleteUser(user)}
+                                disabled={user.rol === 'Administrador'}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </span> 
                           </Tooltip>
                         </TableCell>
                       </TableRow>

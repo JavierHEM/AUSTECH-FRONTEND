@@ -37,6 +37,7 @@ import {
 } from '@mui/material';
 import { 
   Add as AddIcon,
+  CheckCircleOutline as CheckCircleIcon,
   Search as SearchIcon,
   Visibility as ViewIcon,
   Edit as EditIcon,
@@ -47,6 +48,7 @@ import {
   Refresh as RefreshIcon,
   Warning as PendingIcon,
   ContentCut as SierraIcon,
+  QrCode as QrCodeIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -82,6 +84,7 @@ const AfiladoList = () => {
   
   const [afilados, setAfilados] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [clientesMap, setClientesMap] = useState({}); // Mapa de cliente_id -> razon_social
   const [sucursales, setSucursales] = useState([]);
   const [tiposAfilado, setTiposAfilado] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -131,6 +134,23 @@ const AfiladoList = () => {
     setLoading(true);
     setError(null);
     try {
+      // Cargar los clientes primero para tener el mapeo disponible
+      try {
+        const clientesResponse = await clienteService.getAllClientes();
+        if (clientesResponse.success) {
+          // Crear un mapa de id -> razon_social para acceso rápido
+          const clientesMapeados = {};
+          clientesResponse.data.forEach(cliente => {
+            clientesMapeados[cliente.id] = cliente.razon_social;
+          });
+          setClientes(clientesResponse.data);
+          setClientesMap(clientesMapeados);
+          console.log('Mapa de clientes creado:', clientesMapeados);
+        }
+      } catch (error) {
+        console.error('Error al cargar clientes:', error);
+      }
+      
       // Cargar afilados según la pestaña actual y el rol del usuario
       let afiladosResponse;
       
@@ -149,14 +169,34 @@ const AfiladoList = () => {
       }
   
       if (afiladosResponse.success) {
+        console.log('Datos de afilados cargados:', afiladosResponse.data);
         setAfilados(afiladosResponse.data);
       } else {
         setError('Error al cargar los afilados');
       }
       
-      // Resto del código para cargar catálogos...
+      // Cargar catálogos
+      try {
+        // Cargar tipos de afilado para filtros
+        const tiposAfiladoResponse = await catalogoService.getTiposAfilado();
+        if (tiposAfiladoResponse.success) {
+          setTiposAfilado(tiposAfiladoResponse.data);
+        }
+
+        // Si hay un cliente seleccionado, cargar sus sucursales
+        if (clienteFilter) {
+          const sucursalesResponse = await sucursalService.getSucursalesByCliente(clienteFilter);
+          if (sucursalesResponse.success) {
+            setSucursales(sucursalesResponse.data);
+          }
+        }
+      } catch (error) {
+        console.error('Error al cargar catálogos:', error);
+        // No bloqueamos la carga principal por errores en catálogos
+      }
     } catch (err) {
-      // Manejo de errores...
+      console.error('Error al cargar afilados:', err);
+      setError('Ocurrió un error al cargar los datos. Por favor, inténtelo de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -193,12 +233,13 @@ const AfiladoList = () => {
   const filteredAfilados = afilados.filter((afilado) => {
     // Filtrar por término de búsqueda
     const searchFields = [
+      afilado.sierras?.codigo_barra || '',
       afilado.sierras?.codigo || '',
       afilado.sierras?.tipos_sierra?.nombre || '',
       afilado.tipos_afilado?.nombre || '',
       afilado.usuarios?.nombre || '',
       afilado.sierras?.sucursales?.nombre || '',
-      afilado.sierras?.sucursales?.clientes?.razon_social || '',
+      clientesMap[afilado.sierras?.sucursales?.cliente_id] || '',
       afilado.observaciones || ''
     ].join(' ').toLowerCase();
     
@@ -240,6 +281,11 @@ const AfiladoList = () => {
     }
   };
 
+  // Función para ir a la página de escaneo de sierra
+  const handleIrAEscaneo = () => {
+    navigate('/afilados/escanear');
+  };
+
   return (
     <Box>
       {/* Breadcrumbs */}
@@ -251,20 +297,38 @@ const AfiladoList = () => {
       </Breadcrumbs>
 
       {/* Encabezado y acciones */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" component="h1" fontWeight="bold">
-          Gestión de Afilados
-        </Typography>
-        <Box>
-          <Button
-            variant="outlined"
-            startIcon={<RefreshIcon />}
-            onClick={loadData}
-            sx={{ mr: 1 }}
-          >
-            Actualizar
-          </Button>
-          {canManageAfilados && (
+      <Box>
+        <Button
+          variant="outlined"
+          startIcon={<RefreshIcon />}
+          onClick={loadData}
+          sx={{ mr: 1 }}
+        >
+          Actualizar
+        </Button>
+        
+        {canManageAfilados && (
+          <>
+            <Button
+              variant="outlined"
+              color="success"
+              startIcon={<CheckCircleIcon />}
+              onClick={() => navigate('/afilados/salida-masiva')}
+              sx={{ mr: 1 }}
+            >
+              Registro Masivo de Salidas
+            </Button>
+          
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<QrCodeIcon />}
+              onClick={() => navigate('/afilados/escanear')}
+              sx={{ mr: 1 }}
+            >
+              Escanear Sierra
+            </Button>
+            
             <Button
               variant="contained"
               color="primary"
@@ -273,8 +337,8 @@ const AfiladoList = () => {
             >
               Nuevo Afilado
             </Button>
-          )}
-        </Box>
+          </>
+        )}
       </Box>
 
       {/* Pestañas */}
@@ -297,7 +361,7 @@ const AfiladoList = () => {
           />
           {sierraParam && (
             <Tab 
-              label={`Sierra ${afilados[0]?.sierras?.codigo || sierraParam}`} 
+              label={`Sierra ${afilados[0]?.sierras?.codigo_barra || afilados[0]?.sierras?.codigo || sierraParam}`} 
               id="afilado-tab-2"
             />
           )}
@@ -439,7 +503,7 @@ const AfiladoList = () => {
                             />
                             <Box>
                               <Typography fontWeight="medium">
-                                {afilado.sierras?.codigo || 'N/A'}
+                                {afilado.sierras?.codigo_barra || afilado.sierras?.codigo || 'N/A'}
                               </Typography>
                               <Typography variant="caption" color="textSecondary">
                                 {afilado.sierras?.tipos_sierra?.nombre || 'Tipo no especificado'}
@@ -449,8 +513,11 @@ const AfiladoList = () => {
                         </TableCell>
                         <TableCell>{afilado.tipos_afilado?.nombre || 'No especificado'}</TableCell>
                         <TableCell>
+                          {/* Usar el mapa de clientes para mostrar el nombre basado en el cliente_id */}
                           <Typography fontWeight="medium">
-                            {afilado.sierras?.sucursales?.clientes?.razon_social || 'N/A'}
+                            {afilado.sierras?.sucursales?.cliente_id 
+                              ? clientesMap[afilado.sierras.sucursales.cliente_id] || `Cliente ID: ${afilado.sierras.sucursales.cliente_id}` 
+                              : 'N/A'}
                           </Typography>
                           <Typography variant="caption" color="textSecondary">
                             {afilado.sierras?.sucursales?.nombre || 'Sucursal no especificada'}

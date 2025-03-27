@@ -49,7 +49,8 @@ import clienteService from '../../services/clienteService';
 import sucursalService from '../../services/sucursalService'; 
 import sierraService from '../../services/sierraService';
 import afiladoService from '../../services/afiladoService';
-import { format } from 'date-fns';
+import userService from '../../services/userService';
+import { format, subDays, formatDistance } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // Componente para mostrar métricas
@@ -166,6 +167,14 @@ const Dashboard = () => {
   const [sierrasRecientes, setSierrasRecientes] = useState([]);
   const [clientesTop, setClientesTop] = useState([]);
   
+  // Estado para valores previos (para comparaciones)
+  const [prevStats, setPrevStats] = useState({
+    afiladosCount: null,
+    afiladosPendientes: null,
+    afiladosUltimos30Dias: null,
+    rendimientoPromedio: null
+  });
+  
   // Estado para manejar si el usuario puede agregar/editar clientes
   const isAdmin = user?.rol === 'Gerente' || user?.rol === 'Administrador';
 
@@ -178,54 +187,211 @@ const Dashboard = () => {
       return dateString;
     }
   };
+  
+  // Función para calcular tiempo transcurrido
+  const calcularTiempoTranscurrido = (dateString) => {
+    if (!dateString) return 'No disponible';
+    try {
+      const fecha = new Date(dateString);
+      return formatDistance(fecha, new Date(), { 
+        addSuffix: true,
+        locale: es
+      });
+    } catch (error) {
+      return 'Fecha inválida';
+    }
+  };
+
+  // Función para calcular rendimiento promedio de afilados
+  const calcularRendimientoPromedio = (afilados) => {
+    if (!afilados || afilados.length === 0) return 0;
+    
+    // Filtrar afilados que tienen campo de rendimiento
+    const afiladosConRendimiento = afilados.filter(a => a.rendimiento);
+    if (afiladosConRendimiento.length === 0) return 0;
+    
+    // Calcular promedio
+    const sumaRendimientos = afiladosConRendimiento.reduce((total, afilado) => {
+      return total + (parseFloat(afilado.rendimiento) || 0);
+    }, 0);
+    
+    return Math.round(sumaRendimientos / afiladosConRendimiento.length);
+  };
+
+  // Función para obtener los datos de afilados de los últimos 30 días
+  const obtenerAfiladosUltimos30Dias = (afilados) => {
+    if (!afilados || !Array.isArray(afilados)) return [];
+    
+    const fechaLimite = subDays(new Date(), 30);
+    return afilados.filter(afilado => {
+      if (!afilado.fecha_afilado) return false;
+      try {
+        const fechaAfilado = new Date(afilado.fecha_afilado);
+        return fechaAfilado >= fechaLimite;
+      } catch (e) {
+        console.error("Error al procesar fecha:", e);
+        return false;
+      }
+    });
+  };
+
+  // Función para obtener los clientes con más actividad
+  const obtenerClientesTop = async (afilados, sierras) => {
+    try {
+      // Obtener todos los clientes
+      const clientesResponse = await clienteService.getAllClientes();
+      if (!clientesResponse.success) throw new Error("Error al obtener clientes");
+      
+      const clientes = clientesResponse.data;
+      
+      // Crear mapa de afilados por cliente
+      const afiladosPorCliente = {};
+      const sierrasPorCliente = {};
+      
+      // Inicializar conteo para cada cliente
+      clientes.forEach(cliente => {
+        afiladosPorCliente[cliente.id] = 0;
+        sierrasPorCliente[cliente.id] = 0;
+      });
+      
+      // Contar afilados por cliente
+      afilados.forEach(afilado => {
+        // Asumiendo que afilado tiene información anidada de sierra > sucursal > cliente
+        const clienteId = afilado.sierras?.sucursales?.cliente_id;
+        if (clienteId && afiladosPorCliente[clienteId] !== undefined) {
+          afiladosPorCliente[clienteId]++;
+        }
+      });
+      
+      // Contar sierras por cliente
+      sierras.forEach(sierra => {
+        const clienteId = sierra.sucursales?.cliente_id;
+        if (clienteId && sierrasPorCliente[clienteId] !== undefined) {
+          sierrasPorCliente[clienteId]++;
+        }
+      });
+      
+      // Combinar datos y ordenar por número de afilados
+      const clientesConDatos = clientes.map(cliente => ({
+        id: cliente.id,
+        nombre: cliente.razon_social,
+        afilados: afiladosPorCliente[cliente.id] || 0,
+        sierras: sierrasPorCliente[cliente.id] || 0
+      }))
+      .filter(cliente => cliente.afilados > 0 || cliente.sierras > 0); // Solo mostrar clientes con actividad
+      
+      // Ordenar y tomar los 4 con más afilados
+      return clientesConDatos
+        .sort((a, b) => b.afilados - a.afilados)
+        .slice(0, 4);
+      
+    } catch (error) {
+      console.error("Error al calcular clientes top:", error);
+      return [];
+    }
+  };
+
+  // Función para manejar el cambio de pestaña
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
 
   // Cargar datos del dashboard
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
-        // En una aplicación real, tendrías un endpoint específico para el dashboard
-        // Aquí simulamos cargando datos de varios endpoints
-        
-        // Cargar estadísticas básicas
-        const pendientesResponse = await afiladoService.getAfiladosPendientes();
-        let pendientes = [];
-        if (pendientesResponse.success) {
-          pendientes = pendientesResponse.data;
-          setAfiladosPendientes(pendientes.slice(0, 5)); // Tomar los 5 primeros
+        // Obtener datos de usuarios
+        let usuariosCount = 0;
+        if (isAdmin) {
+          const usuariosResponse = await userService.getAllUsers();
+          console.log('Respuesta de usuarios:', usuariosResponse); // Log para depuración
+          if (usuariosResponse.success) {
+            usuariosCount = usuariosResponse.data.length;
+            console.log('Número real de usuarios:', usuariosCount); // Log para depuración
+          }
         }
         
-        // Simulación de estadísticas (en producción vendrían del backend)
-        setTimeout(() => {
-          setStats({
-            usuariosCount: 24,
-            clientesCount: 18,
-            sucursalesCount: 35,
-            sierrasCount: 156,
-            afiladosCount: 487,
-            afiladosPendientes: pendientes.length,
-            afiladosCompletados: 452,
-            afiladosUltimos30Dias: 78,
-            rendimientoPromedio: 92
-          });
-          
-          // Simulación de sierras recientes
-          setSierrasRecientes([
-            { id: 1, codigo: 'SIERRA001', tipo: 'Sierra Cinta', sucursal: 'Sucursal Central', cliente: 'Empresa A', fechaRegistro: '2023-01-15' },
-            { id: 2, codigo: 'SIERRA002', tipo: 'Sierra Circular', sucursal: 'Sucursal Norte', cliente: 'Empresa B', fechaRegistro: '2023-01-18' },
-            { id: 3, codigo: 'SIERRA003', tipo: 'Sierra Cinta', sucursal: 'Sucursal Sur', cliente: 'Empresa C', fechaRegistro: '2023-01-20' },
-          ]);
-          
-          // Simulación de clientes top
-          setClientesTop([
-            { id: 1, nombre: 'Empresa A', afilados: 45, sierras: 12 },
-            { id: 2, nombre: 'Empresa B', afilados: 32, sierras: 8 },
-            { id: 3, nombre: 'Empresa C', afilados: 28, sierras: 9 },
-            { id: 4, nombre: 'Empresa D', afilados: 21, sierras: 5 },
-          ]);
-          
-          setLoading(false);
-        }, 1000);
+        // Obtener datos de clientes
+        const clientesResponse = await clienteService.getAllClientes();
+        const clientesCount = clientesResponse.success ? clientesResponse.data.length : 0;
+        
+        // Obtener datos de sucursales
+        const sucursalesResponse = await sucursalService.getAllSucursales();
+        const sucursalesCount = sucursalesResponse.success ? sucursalesResponse.data.length : 0;
+        
+        // Obtener datos de sierras
+        const sierrasResponse = await sierraService.getAllSierras();
+        const sierras = sierrasResponse.success ? sierrasResponse.data : [];
+        const sierrasCount = sierras.length;
+        
+        // Obtener sierras recientes (ordenadas por fecha de registro)
+        const sierrasRecientes = [...sierras]
+          .sort((a, b) => new Date(b.fecha_registro || 0) - new Date(a.fecha_registro || 0))
+          .slice(0, 3)
+          .map(sierra => ({
+            id: sierra.id,
+            codigo: sierra.codigo,
+            tipo: sierra.tipo_sierra?.nombre || 'No especificado',
+            sucursal: sierra.sucursales?.nombre || 'No especificada',
+            cliente: sierra.sucursales?.clientes?.razon_social || 'No especificado',
+            fechaRegistro: sierra.fecha_registro
+          }));
+        
+        setSierrasRecientes(sierrasRecientes);
+        
+        // Obtener datos de afilados
+        const afiladosResponse = await afiladoService.getAllAfilados();
+        const afilados = afiladosResponse.success ? afiladosResponse.data : [];
+        const afiladosCount = afilados.length;
+        
+        // Obtener afilados pendientes
+        const pendientesResponse = await afiladoService.getAfiladosPendientes();
+        const afiladosPendientes = pendientesResponse.success ? pendientesResponse.data : [];
+        setAfiladosPendientes(afiladosPendientes.slice(0, 5));
+        
+        // Calcular afilados completados
+        const afiladosCompletados = afilados.filter(afilado => afilado.fecha_salida).length;
+        
+        // Calcular afilados de los últimos 30 días
+        const afiladosUltimos30Dias = obtenerAfiladosUltimos30Dias(afilados).length;
+        
+        // Calcular rendimiento promedio
+        const rendimientoPromedio = calcularRendimientoPromedio(afilados);
+        
+        // Obtener clientes top
+        const clientesTopData = await obtenerClientesTop(afilados, sierras);
+        setClientesTop(clientesTopData);
+        
+        // Calcular valores previos (para mostrar tendencias)
+        // En un sistema real, estos vendrían de datos históricos
+        // Aquí hacemos una simulación para mostrar la funcionalidad
+        const prevAfiladosCount = Math.max(0, afiladosCount - Math.floor(afiladosCount * 0.05));
+        const prevAfiladosPendientes = Math.max(0, afiladosPendientes.length + 2);
+        const prevAfiladosUltimos30Dias = Math.max(0, afiladosUltimos30Dias - 5);
+        const prevRendimientoPromedio = Math.max(0, rendimientoPromedio - 3);
+        
+        setPrevStats({
+          afiladosCount: prevAfiladosCount,
+          afiladosPendientes: prevAfiladosPendientes,
+          afiladosUltimos30Dias: prevAfiladosUltimos30Dias,
+          rendimientoPromedio: prevRendimientoPromedio
+        });
+        
+        // Actualizar estadísticas
+        setStats({
+          usuariosCount,
+          clientesCount,
+          sucursalesCount,
+          sierrasCount,
+          afiladosCount,
+          afiladosPendientes: afiladosPendientes.length,
+          afiladosCompletados,
+          afiladosUltimos30Dias,
+          rendimientoPromedio
+        });
+        
+        setLoading(false);
       } catch (error) {
         console.error('Error al cargar datos del dashboard:', error);
         setLoading(false);
@@ -233,12 +399,7 @@ const Dashboard = () => {
     };
 
     fetchDashboardData();
-  }, []);
-
-  // Función para manejar el cambio de pestaña
-  const handleTabChange = (event, newValue) => {
-    setTabValue(newValue);
-  };
+  }, [isAdmin]);
 
   return (
     <Box>
@@ -294,53 +455,6 @@ const Dashboard = () => {
             color="success"
             onClick={() => navigate('/sierras')}
             isLoading={loading}
-          />
-        </Grid>
-      </Grid>
-
-      {/* Estadísticas de afilados */}
-      <Grid container spacing={3} mb={4}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Afilados Totales"
-            value={stats.afiladosCount}
-            prevValue={430} // Valor anterior de comparación
-            icon={<AfiladoIcon />}
-            color="warning"
-            onClick={() => navigate('/afilados')}
-            isLoading={loading}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Afilados Pendientes"
-            value={stats.afiladosPendientes}
-            prevValue={42} // Valor anterior para comparar
-            icon={<WarningIcon />}
-            color="error"
-            onClick={() => navigate('/afilados?pendientes=true')}
-            isLoading={loading}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Últimos 30 días"
-            value={stats.afiladosUltimos30Dias}
-            prevValue={65} // Anterior
-            icon={<TimelineIcon />}
-            color="info"
-            isLoading={loading}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Rendimiento"
-            value={stats.rendimientoPromedio}
-            prevValue={88} // Anterior
-            icon={<PieChartIcon />}
-            color="success"
-            isLoading={loading}
-            isPercentage={true}
           />
         </Grid>
       </Grid>
@@ -433,7 +547,7 @@ const Dashboard = () => {
                             <Box component="span" sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
                               <TimeIcon fontSize="small" sx={{ mr: 0.5, fontSize: '1rem' }} />
                               <Typography variant="caption">
-                                Fecha de ingreso: {formatDate(afilado.fecha_afilado)}
+                                Ingreso: {formatDate(afilado.fecha_afilado)} ({calcularTiempoTranscurrido(afilado.fecha_afilado)})
                               </Typography>
                             </Box>
                           </>
@@ -533,8 +647,6 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </TabPanel>
-        
-        {/* Panel de Clientes Top */}
         <TabPanel value={tabValue} index={2}>
           <Card>
             <CardHeader 

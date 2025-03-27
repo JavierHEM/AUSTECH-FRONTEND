@@ -38,18 +38,21 @@ import {
   Business as BusinessIcon,
   StorefrontOutlined as SucursalIcon,
   Refresh as RefreshIcon,
-  FilterList as FilterIcon
+  FilterList as FilterIcon,
+  ContentCut as SierraIcon
 } from '@mui/icons-material';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import sucursalService from '../../services/sucursalService';
 import clienteService from '../../services/clienteService';
+import sierraService from '../../services/sierraService';
 
 const SucursalList = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [sucursales, setSucursales] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [sierrasPorSucursal, setSierrasPorSucursal] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -65,21 +68,54 @@ const SucursalList = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await sucursalService.getAllSucursales();
-      if (response.success) {
-        setSucursales(response.data);
-      } else {
-        setError('Error al cargar las sucursales');
-      }
-      
-      // Cargar clientes para el filtro
+      // Primero cargamos los clientes para tener la información completa
       const clientesResponse = await clienteService.getAllClientes();
       if (clientesResponse.success) {
+        const clientesMap = {};
+        clientesResponse.data.forEach(cliente => {
+          clientesMap[cliente.id] = cliente;
+        });
         setClientes(clientesResponse.data);
+        
+        // Luego cargamos las sucursales
+        const response = await sucursalService.getAllSucursales();
+        if (response.success) {
+          // Enriquecemos los datos de las sucursales con información completa del cliente
+          const sucursalesEnriquecidas = response.data.map(sucursal => {
+            const clienteCompleto = clientesMap[sucursal.cliente_id];
+            return {
+              ...sucursal,
+              clientes: clienteCompleto || sucursal.clientes
+            };
+          });
+          
+          setSucursales(sucursalesEnriquecidas);
+          
+          // Obtener la cantidad de sierras para cada sucursal
+          const sierrasData = {};
+          for (const sucursal of response.data) {
+            try {
+              const sierrasResponse = await sierraService.getSierrasBySucursal(sucursal.id);
+              if (sierrasResponse.success) {
+                sierrasData[sucursal.id] = sierrasResponse.data.length;
+              } else {
+                sierrasData[sucursal.id] = 0;
+              }
+            } catch (err) {
+              console.error(`Error al obtener sierras para sucursal ${sucursal.id}:`, err);
+              sierrasData[sucursal.id] = 0;
+            }
+          }
+          setSierrasPorSucursal(sierrasData);
+        } else {
+          setError('Error al cargar las sucursales');
+        }
+      } else {
+        setError('Error al cargar los clientes');
       }
     } catch (err) {
-      console.error('Error al obtener sucursales:', err);
-      setError('Error al cargar las sucursales. Por favor, inténtelo de nuevo.');
+      console.error('Error al obtener sucursales o clientes:', err);
+      setError('Error al cargar los datos. Por favor, inténtelo de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -262,26 +298,38 @@ const SucursalList = () => {
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Box 
-                            component={Link} 
-                            to={`/clientes/${sucursal.cliente_id}`}
-                            sx={{ 
-                              display: 'inline-flex', 
-                              alignItems: 'center',
-                              textDecoration: 'none',
-                              color: 'inherit',
-                              '&:hover': { textDecoration: 'underline' }
-                            }}
-                          >
-                            <BusinessIcon fontSize="small" sx={{ mr: 0.5 }} />
-                            {sucursal.clientes?.razon_social || 'No especificado'}
-                          </Box>
+                          {sucursal.cliente_id ? (
+                            <Box 
+                              component={Link} 
+                              to={`/clientes/${sucursal.cliente_id}`}
+                              sx={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center',
+                                textDecoration: 'none',
+                                color: 'inherit',
+                                '&:hover': { textDecoration: 'underline' }
+                              }}
+                            >
+                              <BusinessIcon fontSize="small" sx={{ mr: 0.5 }} />
+                              {sucursal.clientes?.razon_social || (
+                                <Typography component="span" color="warning.main">
+                                  Cliente no disponible (ID: {sucursal.cliente_id})
+                                </Typography>
+                              )}
+                            </Box>
+                          ) : (
+                            <Typography color="error">
+                              <BusinessIcon fontSize="small" sx={{ mr: 0.5, verticalAlign: 'middle' }} />
+                              Sin cliente asignado
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell>{sucursal.direccion}</TableCell>
                         <TableCell>{sucursal.telefono}</TableCell>
                         <TableCell>
                           <Chip 
-                            label={`${sucursal.sierras?.length || 0} sierras`}
+                            icon={<SierraIcon fontSize="small" />}
+                            label={`${sierrasPorSucursal[sucursal.id] || 0} sierras`}
                             size="small" 
                             color="primary" 
                             variant="outlined"

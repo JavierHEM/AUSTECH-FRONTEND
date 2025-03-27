@@ -45,7 +45,9 @@ import {
   ContentCut as SierraIcon,
   BuildCircle as AfiladoIcon,
   CheckCircleOutline as CompletedIcon,
-  Warning as PendingIcon
+  Warning as PendingIcon,
+  PictureAsPdf as PdfIcon,
+  FilePresent as ExcelIcon
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -54,6 +56,12 @@ import { format, parseISO, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import clienteService from '../../services/clienteService';
 import afiladoService from '../../services/afiladoService';
+import * as XLSX from 'xlsx';
+
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+import logoImg from '../../assets/logo.png';
 
 const ReporteAfiladosCliente = () => {
   const navigate = useNavigate();
@@ -76,7 +84,7 @@ const ReporteAfiladosCliente = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // Función para cargar datos
+  // Función para cargar datos reales
   const loadData = async () => {
     setLoading(true);
     setError(null);
@@ -88,110 +96,43 @@ const ReporteAfiladosCliente = () => {
         setClientes(clientesResponse.data);
       }
       
-      // Cargar datos de afilados (simulados para este ejemplo)
-      // En una implementación real, esto se obtendría del API
-      setTimeout(() => {
-        // Simulación de datos de afilado basado en el ejemplo proporcionado
-        const datosSimulados = [
-          {
-            id: 1,
-            sucursal: 'AS',
-            tipo_sierra: 'Circular',
-            codigo_sierra: 'S-0001',
-            tipo_afilado: 'lomo',
-            estado: true,
-            fecha_afilado: '2025-03-03',
-            fecha_creacion: '2025-02-18',
-            dias: 13,
+      // Cargar datos de afilados reales
+      const afiladosResponse = await afiladoService.getAllAfilados();
+      if (afiladosResponse.success) {
+        // Procesar los datos para el formato que necesitamos
+        const procesados = afiladosResponse.data.map(afilado => {
+          // Calcular días entre fechas
+          const fechaCreacion = new Date(afilado.fecha_registro || afilado.created_at);
+          const fechaAfilado = new Date(afilado.fecha_afilado);
+          const dias = differenceInDays(fechaAfilado, fechaCreacion) || 0;
+          
+          return {
+            id: afilado.id,
+            sucursal: afilado.sierras?.sucursales?.nombre || 'No especificada',
+            tipo_sierra: afilado.sierras?.tipos_sierra?.nombre || 'No especificado',
+            codigo_sierra: afilado.sierras?.codigo_barra || afilado.sierras?.codigo || 'No especificado',
+            tipo_afilado: afilado.tipos_afilado?.nombre || 'No especificado',
+            estado: !!afilado.fecha_salida, // true si tiene fecha de salida (completado)
+            fecha_afilado: afilado.fecha_afilado,
+            fecha_salida: afilado.fecha_salida,
+            fecha_creacion: afilado.fecha_registro || afilado.created_at,
+            dias: dias,
             cliente: {
-              id: 1,
-              razon_social: 'Cliente A'
+              id: afilado.sierras?.sucursales?.clientes?.id || 0,
+              razon_social: afilado.sierras?.sucursales?.clientes?.razon_social || 'No especificado'
             }
-          },
-          {
-            id: 2,
-            sucursal: 'AS',
-            tipo_sierra: 'Circular',
-            codigo_sierra: 'S-0001',
-            tipo_afilado: 'lomo',
-            estado: true,
-            fecha_afilado: '2025-03-10',
-            fecha_creacion: '2025-02-18',
-            dias: 20,
-            cliente: {
-              id: 1,
-              razon_social: 'Cliente A'
-            }
-          },
-          {
-            id: 3,
-            sucursal: 'AS',
-            tipo_sierra: 'Circular',
-            codigo_sierra: 'S-0001',
-            tipo_afilado: 'pecho',
-            estado: true,
-            fecha_afilado: '2025-03-03',
-            fecha_creacion: '2025-02-18',
-            dias: 13,
-            cliente: {
-              id: 1,
-              razon_social: 'Cliente A'
-            }
-          },
-          {
-            id: 4,
-            sucursal: 'AS',
-            tipo_sierra: 'Circular',
-            codigo_sierra: 'S-0001',
-            tipo_afilado: 'pecho',
-            estado: false,
-            fecha_afilado: '2025-03-28',
-            fecha_creacion: '2025-02-18',
-            dias: 38,
-            cliente: {
-              id: 1,
-              razon_social: 'Cliente A'
-            }
-          },
-          {
-            id: 5,
-            sucursal: 'BS',
-            tipo_sierra: 'Cinta',
-            codigo_sierra: 'S-0002',
-            tipo_afilado: 'lomo',
-            estado: true,
-            fecha_afilado: '2025-03-15',
-            fecha_creacion: '2025-02-20',
-            dias: 23,
-            cliente: {
-              id: 2,
-              razon_social: 'Cliente B'
-            }
-          },
-          {
-            id: 6,
-            sucursal: 'BS',
-            tipo_sierra: 'Cinta',
-            codigo_sierra: 'S-0002',
-            tipo_afilado: 'pecho',
-            estado: false,
-            fecha_afilado: '2025-03-22',
-            fecha_creacion: '2025-02-20',
-            dias: 30,
-            cliente: {
-              id: 2,
-              razon_social: 'Cliente B'
-            }
-          }
-        ];
+          };
+        });
         
-        setAfilados(datosSimulados);
-        setLoading(false);
-      }, 1000);
-      
+        setAfilados(procesados);
+      } else {
+        setError('Error al cargar los datos de afilados');
+      }
     } catch (err) {
       console.error('Error al obtener datos:', err);
-      setError('Error al cargar los datos. Por favor, inténtelo de nuevo.');
+      setError('Error al cargar los datos. Por favor, intentelo de nuevo.');
+      
+    } finally {
       setLoading(false);
     }
   };
@@ -265,41 +206,10 @@ const ReporteAfiladosCliente = () => {
     setPage(0);
   };
 
-  // Función para exportar a CSV
-  const exportToCSV = () => {
-    // Crear filas de datos para el CSV
-    const rows = [
-      ['Sucursal', 'Tipo Sierra', 'Código Sierra', 'Tipo Afilado', 'Estado', 'Fecha Afilado', 'Fecha Creación', 'Días'],
-      ...filteredAfilados.map(a => [
-        a.sucursal,
-        a.tipo_sierra,
-        a.codigo_sierra,
-        a.tipo_afilado,
-        a.estado ? 'Completado' : 'Pendiente',
-        formatDate(a.fecha_afilado),
-        formatDate(a.fecha_creacion),
-        a.dias
-      ])
-    ];
-    
-    // Convertir a CSV
-    const csvContent = rows.map(row => row.join(',')).join('\n');
-    
-    // Crear blob y enlace para descargar
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `reporte_afilados_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Función para imprimir reporte
-  const printReport = () => {
-    window.print();
+  // Quitar acentos de un texto
+  const removeAccents = (str) => {
+    if (!str) return '';
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   };
 
   // Calcular estadísticas
@@ -307,6 +217,166 @@ const ReporteAfiladosCliente = () => {
   const afiladosPendientes = filteredAfilados.filter(a => !a.estado).length;
   const afiladosCompletados = filteredAfilados.filter(a => a.estado).length;
   const promedioDias = filteredAfilados.reduce((sum, a) => sum + a.dias, 0) / (totalAfilados || 1);
+
+  // Función para exportar a Excel (XLSX)
+  const exportToExcel = () => {
+    // Título del reporte
+    const title = [['REPORTE DE AFILADOS POR CLIENTE']];
+    const subtitle = [[`Generado el ${new Date().toLocaleDateString()}`]];
+    const blank = [['']];
+    
+    // Encabezados
+    const headers = [['Sucursal', 'Tipo Sierra', 'Codigo Sierra', 'Tipo Afilado', 'Estado', 'Fecha Afilado', 'Fecha Salida', 'Fecha Creacion', 'Dias']];
+    
+    // Datos para el excel - sin acentos
+    const data = filteredAfilados.map(a => [
+      removeAccents(a.sucursal),
+      removeAccents(a.tipo_sierra),
+      a.codigo_sierra,
+      removeAccents(a.tipo_afilado),
+      a.estado ? 'Completado' : 'Pendiente',
+      formatDate(a.fecha_afilado),
+      formatDate(a.fecha_salida),
+      formatDate(a.fecha_creacion),
+      a.dias
+    ]);
+    
+    // Crear workbook
+    const ws = XLSX.utils.aoa_to_sheet([...title, ...subtitle, ...blank, ...headers, ...data]);
+    const wb = XLSX.utils.book_new();
+    
+    // Estilizar título (merge cells)
+    const titleRange = {s: {r: 0, c: 0}, e: {r: 0, c: 8}};
+    const subtitleRange = {s: {r: 1, c: 0}, e: {r: 1, c: 8}};
+    
+    if(!ws['!merges']) ws['!merges'] = [];
+    ws['!merges'].push(titleRange);
+    ws['!merges'].push(subtitleRange);
+    
+    // Ajustar el ancho de las columnas
+    const wscols = [
+      {wch: 15}, // Sucursal
+      {wch: 15}, // Tipo Sierra
+      {wch: 15}, // Código Sierra
+      {wch: 15}, // Tipo Afilado
+      {wch: 15}, // Estado
+      {wch: 15}, // Fecha Afilado
+      {wch: 15}, // Fecha Salida
+      {wch: 15}, // Fecha Creación
+      {wch: 10}  // Días
+    ];
+    ws['!cols'] = wscols;
+    
+    XLSX.utils.book_append_sheet(wb, ws, "Afilados");
+    
+    // Generar archivo y descargar
+    XLSX.writeFile(wb, `reporte_afilados_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  // Función para exportar a PDF
+  const exportToPDF = () => {
+    const doc = new jsPDF('landscape');
+    
+    // Ya no añadimos el logo
+    // try {
+    //   const img = new Image();
+    //   img.src = logoImg;
+    //   doc.addImage(img, 'PNG', 10, 10, 30, 30);
+    // } catch (error) {
+    //   console.error('Error al cargar el logo:', error);
+    // }
+    
+    // Ajustar posición del título (elevarlo ya que no hay logo)
+    doc.setFontSize(18);
+    doc.text('REPORTE DE AFILADOS POR CLIENTE', doc.internal.pageSize.width / 2, 15, { align: 'center' });
+    
+    // Ajustar posición del subtítulo
+    doc.setFontSize(12);
+    doc.text(`Generado el ${new Date().toLocaleDateString()}`, doc.internal.pageSize.width / 2, 25, { align: 'center' });
+    
+    // Ajustar posición de las estadísticas
+    doc.setFontSize(10);
+    doc.text(`Total: ${totalAfilados}  |  Completados: ${afiladosCompletados}  |  Pendientes: ${afiladosPendientes}  |  Promedio Dias: ${promedioDias.toFixed(1)}`, doc.internal.pageSize.width / 2, 35, { align: 'center' });
+    
+    // El resto del código sigue igual
+    // Definir encabezados y datos de tabla
+    const headers = [['Sucursal', 'Tipo Sierra', 'Codigo Sierra', 'Tipo Afilado', 'Estado', 'Fecha Afilado', 'Fecha Salida', 'Fecha Creacion', 'Dias']];
+    
+    const data = filteredAfilados.map(a => [
+      a.sucursal,
+      a.tipo_sierra,
+      a.codigo_sierra,
+      a.tipo_afilado,
+      a.estado ? 'Completado' : 'Pendiente',
+      formatDate(a.fecha_afilado),
+      formatDate(a.fecha_salida),
+      formatDate(a.fecha_creacion),
+      a.dias
+    ]);
+    
+    // Usar método alternativo para crear la tabla si doc.autoTable no funciona
+    // Aquí puedes usar la implementación manual que te proporcioné anteriormente
+    // o intentar usar autoTable nuevamente
+    
+    // Si estás usando la biblioteca autoTable correctamente importada:
+    if (typeof autoTable === 'function') {
+      autoTable(doc, {
+        startY: 45, // Ajustado porque eliminamos el logo
+        head: headers,
+        body: data,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [66, 139, 202],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        alternateRowStyles: {
+          fillColor: [240, 240, 240]
+        },
+        margin: { top: 45 },
+        styles: {
+          overflow: 'linebreak',
+          cellWidth: 'wrap',
+          fontSize: 8
+        },
+        columnStyles: {
+          8: { halign: 'right' }
+        }
+      });
+    } else {
+      // Aquí implementación manual si autoTable no está disponible
+      console.warn('autoTable no está disponible, usando método alternativo');
+      // ... código alternativo ...
+    }
+    
+    // Pie de página
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(`Pagina ${i} de ${pageCount}`, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 10);
+    }
+    
+    // Guardar el PDF
+    doc.save(`reporte_afilados_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
+  // Función para imprimir reporte
+  const printReport = () => {
+    // Guardar estado original
+    const originalTitle = document.title;
+    
+    // Cambiar título para la impresión
+    document.title = `Reporte de Afilados - ${new Date().toLocaleDateString()}`;
+    
+    // Imprimir
+    window.print();
+    
+    // Restaurar título original
+    setTimeout(() => {
+      document.title = originalTitle;
+    }, 100);
+  };
 
   return (
     <Box>
@@ -337,12 +407,21 @@ const ReporteAfiladosCliente = () => {
           </Button>
           <Button
             variant="outlined"
-            color="secondary"
-            startIcon={<DownloadIcon />}
-            onClick={exportToCSV}
+            color="success"
+            startIcon={<ExcelIcon />}
+            onClick={exportToExcel}
             sx={{ mr: 1 }}
           >
-            Exportar CSV
+            Excel
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<PdfIcon />}
+            onClick={exportToPDF}
+            sx={{ mr: 1 }}
+          >
+            PDF
           </Button>
           <Button
             variant="contained"
@@ -354,7 +433,7 @@ const ReporteAfiladosCliente = () => {
           </Button>
         </Box>
       </Box>
-
+      
       {/* Filtros */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -522,7 +601,7 @@ const ReporteAfiladosCliente = () => {
           </Grid>
         </CardContent>
       </Card>
-
+      
       {/* Estadísticas */}
       <Box className="print-only" sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
         <Paper sx={{ p: 2, flex: '1 1 200px', bgcolor: 'primary.lighter', borderLeft: 3, borderColor: 'primary.main' }}>
@@ -541,11 +620,11 @@ const ReporteAfiladosCliente = () => {
         </Paper>
         
         <Paper sx={{ p: 2, flex: '1 1 200px', bgcolor: 'info.lighter', borderLeft: 3, borderColor: 'info.main' }}>
-          <Typography variant="subtitle2" color="text.secondary">Promedio Días</Typography>
+          <Typography variant="subtitle2" color="text.secondary">Promedio Dias</Typography>
           <Typography variant="h4" color="info.dark">{promedioDias.toFixed(1)}</Typography>
         </Paper>
       </Box>
-
+      
       {/* Tabla de afilados */}
       <Card>
         <TableContainer component={Paper}>
@@ -564,12 +643,13 @@ const ReporteAfiladosCliente = () => {
                   <TableRow>
                     <TableCell>Sucursal</TableCell>
                     <TableCell>Tipo Sierra</TableCell>
-                    <TableCell>Código Sierra</TableCell>
+                    <TableCell>Codigo Sierra</TableCell>
                     <TableCell>Tipo Afilado</TableCell>
                     <TableCell>Estado</TableCell>
                     <TableCell>Fecha Afilado</TableCell>
-                    <TableCell>Fecha Creación</TableCell>
-                    <TableCell>Días</TableCell>
+                    <TableCell>Fecha Salida</TableCell>
+                    <TableCell>Fecha Creacion</TableCell>
+                    <TableCell>Dias</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -591,6 +671,7 @@ const ReporteAfiladosCliente = () => {
                           />
                         </TableCell>
                         <TableCell>{formatDate(afilado.fecha_afilado)}</TableCell>
+                        <TableCell>{formatDate(afilado.fecha_salida)}</TableCell>
                         <TableCell>{formatDate(afilado.fecha_creacion)}</TableCell>
                         <TableCell>{afilado.dias}</TableCell>
                       </TableRow>
@@ -599,7 +680,7 @@ const ReporteAfiladosCliente = () => {
                   {/* Mensaje cuando no hay resultados */}
                   {filteredAfilados.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} align="center" sx={{ py: 5 }}>
+                        <TableCell colSpan={9} align="center" sx={{ py: 5 }}>
                         <Typography variant="body1" color="text.secondary">
                           No se encontraron afilados que coincidan con los filtros aplicados
                         </Typography>
@@ -617,14 +698,14 @@ const ReporteAfiladosCliente = () => {
                 page={page}
                 onPageChange={handleChangePage}
                 onRowsPerPageChange={handleChangeRowsPerPage}
-                labelRowsPerPage="Filas por página:"
+                labelRowsPerPage="Filas por pagina:"
               />
             </>
           )}
         </TableContainer>
       </Card>
 
-      {/* Botón flotante de acciones  */}
+      {/* Botón flotante de acciones */}
       <Box
         sx={{
           position: 'fixed',
@@ -634,18 +715,32 @@ const ReporteAfiladosCliente = () => {
           display: { xs: 'block', sm: 'none' }
         }}
       >
-        <Tooltip title="Exportar CSV">
+        <Tooltip title="Excel">
           <IconButton 
-            color="primary" 
+            color="success" 
             size="large" 
             sx={{ 
               bgcolor: 'background.paper', 
               boxShadow: 3,
               mr: 1
             }}
-            onClick={exportToCSV}
+            onClick={exportToExcel}
           >
-            <DownloadIcon />
+            <ExcelIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="PDF">
+          <IconButton 
+            color="error" 
+            size="large" 
+            sx={{ 
+              bgcolor: 'background.paper', 
+              boxShadow: 3,
+              mr: 1
+            }}
+            onClick={exportToPDF}
+          >
+            <PdfIcon />
           </IconButton>
         </Tooltip>
         <Tooltip title="Imprimir">
@@ -667,15 +762,30 @@ const ReporteAfiladosCliente = () => {
       <style jsx="true">{`
         @media print {
           @page { size: landscape; }
-          body * {
-            visibility: hidden;
-          }
-          .MuiContainer-root, .MuiContainer-root * {
-            visibility: visible;
-          }
-          .no-print, .no-print * {
+          
+          /* Ocultar elementos que no queremos imprimir */
+          nav, header, footer, button, .no-print {
             display: none !important;
           }
+          
+          /* Asegurar que el contenido principal sea visible */
+          .MuiTableContainer-root, 
+          .MuiTableContainer-root *,
+          .MuiCard-root,
+          .MuiCard-root * {
+            visibility: visible !important;
+            color-adjust: exact !important;
+            -webkit-print-color-adjust: exact !important;
+          }
+          
+          /* Estilos específicos para la impresión */
+          body {
+            margin: 0;
+            padding: 0;
+            background: white;
+          }
+          
+          /* Hacer que las estadísticas siempre sean visibles en impresión */
           .print-only {
             display: block !important;
           }

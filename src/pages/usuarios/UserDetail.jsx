@@ -62,6 +62,13 @@ const UserDetail = () => {
   const [showSuccessMessage, setShowSuccessMessage] = useState(!!location.state?.message);
   const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
 
+  // Mapeo de IDs de rol a nombres
+  const rolMapping = {
+    1: 'Gerente',
+    2: 'Administrador',
+    3: 'Cliente'
+  };
+
   // Determinar si el usuario actual puede gestionar este usuario
   const isAdmin = currentUser?.rol === 'Gerente' || currentUser?.rol === 'Administrador';
   const canManageUser = isAdmin && user && user.rol !== 'Administrador';
@@ -76,7 +83,12 @@ const UserDetail = () => {
         const response = await userService.getUserById(id);
         
         if (response.success) {
-          setUser(response.data);
+          // Agregar el nombre del rol basado en rol_id
+          const userData = {
+            ...response.data,
+            rol: response.data.rol_id ? rolMapping[response.data.rol_id] : response.data.rol || 'Desconocido'
+          };
+          setUser(userData);
         } else {
           setError(response.error || 'Error al cargar el usuario');
         }
@@ -230,14 +242,19 @@ const UserDetail = () => {
           )}
           
           {canManageUser && (
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<DeleteIcon />}
-              onClick={() => setConfirmDelete(true)}
-            >
-              Eliminar
-            </Button>
+            <Tooltip title="Eliminar usuario">
+              <span>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={user.rol === 'Administrador'}
+                >
+                  Eliminar
+                </Button>
+              </span>
+            </Tooltip>
           )}
         </Box>
       </Box>
@@ -262,7 +279,7 @@ const UserDetail = () => {
               </Avatar>
               
               <Typography variant="h5" fontWeight="bold" gutterBottom>
-                {user.nombre}
+                {user.nombre} {user.apellido}
               </Typography>
               
               <Box 
@@ -322,15 +339,19 @@ const UserDetail = () => {
                 {canManageUser && (
                   <>
                     <Grid item xs={12}>
-                      <Button 
-                        fullWidth 
-                        variant="outlined" 
-                        color={user.activo ? 'error' : 'success'} 
-                        startIcon={user.activo ? <BlockIcon /> : <CheckIcon />}
-                        onClick={() => alert('Cambiar estado no implementado')}
-                      >
-                        {user.activo ? 'Desactivar Usuario' : 'Activar Usuario'}
-                      </Button>
+                      <Tooltip title={user.activo ? "Desactivar usuario" : "Activar usuario"}>
+                        <span>
+                          <Button 
+                            fullWidth 
+                            variant="outlined" 
+                            color={user.activo ? 'error' : 'success'} 
+                            startIcon={user.activo ? <BlockIcon /> : <CheckIcon />}
+                            onClick={() => alert('Cambiar estado no implementado')}
+                          >
+                            {user.activo ? 'Desactivar Usuario' : 'Activar Usuario'}
+                          </Button>
+                        </span>
+                      </Tooltip>
                     </Grid>
                   </>
                 )}
@@ -366,7 +387,7 @@ const UserDetail = () => {
                         </ListItemIcon>
                         <ListItemText 
                           primary="Nombre" 
-                          secondary={user.nombre} 
+                          secondary={`${user.nombre} ${user.apellido}`} 
                         />
                       </ListItem>
                       
@@ -485,7 +506,7 @@ const UserDetail = () => {
         </DialogTitle>
         <DialogContent>
           <DialogContentText id="alert-dialog-description">
-            ¿Está seguro de que desea eliminar el usuario "{user.nombre}"? Esta acción no se puede deshacer.
+            ¿Está seguro de que desea eliminar el usuario "{user.nombre} {user.apellido}"? Esta acción no se puede deshacer.
           </DialogContentText>
         </DialogContent>
         <DialogActions>

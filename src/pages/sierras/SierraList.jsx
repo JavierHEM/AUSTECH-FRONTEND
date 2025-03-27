@@ -60,6 +60,7 @@ import sierraService from '../../services/sierraService';
 import clienteService from '../../services/clienteService';
 import sucursalService from '../../services/sucursalService';
 import catalogoService from '../../services/catalogoService';
+import afiladoService from '../../services/afiladoService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -87,6 +88,7 @@ const SierraList = () => {
   const { user } = useAuth();
   
   const [sierras, setSierras] = useState([]);
+  const [afiladosPorSierra, setAfiladosPorSierra] = useState({});
   const [clientes, setClientes] = useState([]);
   const [sucursales, setSucursales] = useState([]);
   const [tiposSierra, setTiposSierra] = useState([]);
@@ -123,59 +125,130 @@ const SierraList = () => {
     }
   };
 
-  // Función para cargar los datos
-
-const loadData = async () => {
-  setLoading(true);
-  setError(null);
-  try {
-    // Cargar sierras según el rol del usuario
-    let sierrasResponse;
-    
-    if (user?.rol === 'Gerente' || user?.rol === 'Administrador') {
-      // Si es gerente o admin, usar el endpoint para obtener todas las sierras
-      sierrasResponse = await sierraService.getAllSierras();
-    } else if (sucursalParam) {
-      // Filtrar por sucursal específica si se proporciona el parámetro
-      sierrasResponse = await sierraService.getSierrasBySucursal(sucursalParam);
-    } else if (clienteParam) {
-      // Filtrar por cliente específico
-      sierrasResponse = await sierraService.getSierrasByCliente(clienteParam);
-    } else {
-      // Para usuarios cliente, obtener sierras asociadas a sus sucursales
-      // Asumimos que hay un campo usuario.sucursalesAsignadas o algo similar
-      // que contiene las sucursales a las que tiene acceso el usuario
-      if (user?.sucursalesAsignadas && user.sucursalesAsignadas.length > 0) {
-        // Si tiene sucursales asignadas, obtener sierras para esas sucursales
-        // Esto podría necesitar ajustes según cómo esté estructurado tu API
-        sierrasResponse = await sierraService.getSierrasByCliente(user.cliente_id);
-      } else {
-        // Si no tiene sucursales asignadas, mostrar mensaje o array vacío
-        sierrasResponse = { success: true, data: [] };
-        setError('No hay sucursales asignadas a este usuario');
+  // Función para cargar los catálogos
+  const loadCatalogos = async () => {
+    try {
+      // Cargar tipos de sierra
+      const tiposSierraResponse = await catalogoService.getTiposSierra();
+      if (tiposSierraResponse.success) {
+        setTiposSierra(tiposSierraResponse.data);
       }
-    }
 
-    if (sierrasResponse.success) {
-      setSierras(sierrasResponse.data);
-    } else {
-      setError('Error al cargar las sierras');
+      // Cargar estados de sierra
+      const estadosSierraResponse = await catalogoService.getEstadosSierra();
+      if (estadosSierraResponse.success) {
+        setEstadosSierra(estadosSierraResponse.data);
+      }
+
+      // Cargar clientes para filtros
+      const clientesResponse = await clienteService.getAllClientes();
+      if (clientesResponse.success) {
+        setClientes(clientesResponse.data);
+        
+        // Si hay un cliente seleccionado en la URL, cargar sus sucursales
+        if (clienteParam) {
+          loadSucursalesByCliente(clienteParam);
+          setClienteFilter(clienteParam);
+        } else {
+          // Cargar todas las sucursales si no hay cliente seleccionado
+          const sucursalesResponse = await sucursalService.getAllSucursales();
+          if (sucursalesResponse.success) {
+            setSucursales(sucursalesResponse.data);
+          }
+        }
+      }
+      
+      // Si hay una sucursal en la URL, establecerla como filtro
+      if (sucursalParam) {
+        setSucursalFilter(sucursalParam);
+      }
+    } catch (err) {
+      console.error('Error al cargar catálogos:', err);
     }
+  };
+
+  // Función para cargar sucursales por cliente
+  const loadSucursalesByCliente = async (clienteId) => {
+    try {
+      const response = await sucursalService.getSucursalesByCliente(clienteId);
+      if (response.success) {
+        setSucursales(response.data);
+      }
+    } catch (err) {
+      console.error('Error al cargar sucursales por cliente:', err);
+    }
+  };
+
+  // Función para cargar los afilados de cada sierra
+  const loadAfiladosPorSierra = async (sierras) => {
+    const afiladosData = {};
     
-    // Resto del código para cargar catálogos y otros datos...
-  } catch (err) {
-    console.error('Error al obtener datos:', err);
-    setError('Error al cargar los datos. Por favor, inténtelo de nuevo.');
-    
-    // Código de manejo de errores o datos de prueba...
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      for (const sierra of sierras) {
+        const response = await afiladoService.getAfiladosBySierra(sierra.id);
+        if (response.success) {
+          afiladosData[sierra.id] = {
+            total: response.data.length,
+            pendientes: response.data.filter(a => !a.fecha_salida).length
+          };
+        } else {
+          afiladosData[sierra.id] = { total: 0, pendientes: 0 };
+        }
+      }
+      setAfiladosPorSierra(afiladosData);
+    } catch (err) {
+      console.error('Error al cargar afilados por sierra:', err);
+    }
+  };
+
+  // Función para cargar los datos
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Cargar catálogos primero para tener los datos disponibles
+      await loadCatalogos();
+      
+      // Cargar sierras según los parámetros
+      let sierrasResponse;
+      
+      if (sucursalParam) {
+        // Filtrar por sucursal específica
+        sierrasResponse = await sierraService.getSierrasBySucursal(sucursalParam);
+      } else if (clienteParam) {
+        // Filtrar por cliente específico
+        sierrasResponse = await sierraService.getSierrasByCliente(clienteParam);
+      } else {
+        // Cargar todas las sierras
+        sierrasResponse = await sierraService.getAllSierras();
+      }
+
+      if (sierrasResponse.success) {
+        setSierras(sierrasResponse.data);
+        
+        // Cargar afilados para cada sierra
+        await loadAfiladosPorSierra(sierrasResponse.data);
+      } else {
+        setError('Error al cargar las sierras');
+      }
+    } catch (err) {
+      console.error('Error al obtener datos:', err);
+      setError('Error al cargar los datos. Por favor, inténtelo de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
   }, [sucursalParam, clienteParam]);
+
+  // Efecto para cargar sucursales cuando cambia el cliente seleccionado
+  useEffect(() => {
+    if (clienteFilter) {
+      loadSucursalesByCliente(clienteFilter);
+    }
+  }, [clienteFilter]);
 
   // Función para manejar el cambio de tab
   const handleTabChange = (event, newValue) => {
@@ -196,8 +269,12 @@ const loadData = async () => {
 
   // Obtener los afilados pendientes de una sierra
   const getAfiladosPendientes = (sierra) => {
-    if (!sierra.afilados) return 0;
-    return sierra.afilados.filter(a => !a.fecha_salida).length;
+    return afiladosPorSierra[sierra.id]?.pendientes || 0;
+  };
+
+  // Obtener el total de afilados de una sierra
+  const getTotalAfilados = (sierra) => {
+    return afiladosPorSierra[sierra.id]?.total || 0;
   };
 
   // Función para filtrar sierras
@@ -246,9 +323,13 @@ const loadData = async () => {
     if (!confirmDelete) return;
     
     try {
-      // En un caso real, llamarías a la API para eliminar
-      alert(`Eliminación simulada de la sierra ${confirmDelete.codigo_barra}`);
-      loadData(); // Recargar los datos
+      const response = await sierraService.deleteSierra(confirmDelete.id);
+      if (response.success) {
+        loadData(); // Recargar los datos
+      } else {
+        console.error('Error al eliminar sierra:', response.error);
+        alert('Error al eliminar la sierra: ' + response.error);
+      }
     } catch (err) {
       console.error('Error al eliminar sierra:', err);
       alert('Error al eliminar la sierra. Por favor, inténtelo de nuevo.');
@@ -341,7 +422,14 @@ const loadData = async () => {
             id="sierra-tab-2"
           />
           <Tab 
-            label="Con Afilados Pendientes" 
+            label={
+              <Badge 
+                badgeContent={sierras.filter(s => getAfiladosPendientes(s) > 0).length} 
+                color="warning"
+              >
+                Con Afilados Pendientes
+              </Badge>
+            } 
             id="sierra-tab-3"
           />
         </Tabs>
@@ -528,9 +616,19 @@ const loadData = async () => {
                         <TableCell>{sierra.tipos_sierra?.nombre || 'No especificado'}</TableCell>
                         <TableCell>
                           <Box>
-                            <Typography fontWeight="medium">
-                              {sierra.sucursales?.clientes?.razon_social || 'No especificado'}
-                            </Typography>
+                            {sierra.sucursales?.clientes?.razon_social ? (
+                              <Typography fontWeight="medium">
+                                {sierra.sucursales.clientes.razon_social}
+                              </Typography>
+                            ) : sierra.sucursales?.cliente_id ? (
+                              <Typography fontWeight="medium" color="warning.main">
+                                Cliente ID: {sierra.sucursales.cliente_id}
+                              </Typography>
+                            ) : (
+                              <Typography fontWeight="medium" color="error">
+                                Sin cliente
+                              </Typography>
+                            )}
                             <Typography variant="caption" color="text.secondary">
                               {sierra.sucursales?.nombre || 'No especificada'}
                             </Typography>
@@ -550,14 +648,16 @@ const loadData = async () => {
                         </TableCell>
                         <TableCell>{formatDate(sierra.fecha_registro)}</TableCell>
                         <TableCell>
-                          {sierra.afilados && sierra.afilados.length > 0 ? (
+                          {getTotalAfilados(sierra) > 0 ? (
                             <Box display="flex" alignItems="center" gap={1}>
                               <Chip 
-                                label={`${sierra.afilados.length} total`}
+                                icon={<HistoryIcon fontSize="small" />}
+                                label={`${getTotalAfilados(sierra)} total`}
                                 size="small" 
                                 color="primary" 
                                 variant="outlined"
-                                onClick={() => navigate(`/afilados?sierra=${sierra.id}`)}
+                                onClick={() => navigate(`/afilados?sierra=${sierra.id}`)} 
+                                clickable
                               />
                               {getAfiladosPendientes(sierra) > 0 && (
                                 <Chip 
@@ -565,6 +665,8 @@ const loadData = async () => {
                                   size="small" 
                                   color="warning" 
                                   variant="outlined"
+                                  onClick={() => navigate(`/afilados?sierra=${sierra.id}&estado=pendiente`)}
+                                  clickable
                                 />
                               )}
                             </Box>

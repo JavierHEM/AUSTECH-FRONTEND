@@ -27,33 +27,53 @@ const AfiladoCreate = () => {
       } 
     : null;
 
-  const handleSubmit = async (data) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await afiladoService.registrarAfilado(data);
+    const handleSubmit = async (data) => {
+      setLoading(true);
+      setError(null);
       
-      if (response.success) {
-        // Opcionalmente esperar un poco para mostrar mensaje de éxito
-        setTimeout(() => {
-          navigate(`/afilados/${response.data.id}`, { 
-            state: { message: 'Afilado registrado correctamente' } 
-          });
-        }, 1500);
-        return { success: true };
-      } else {
-        setError(response.error || 'Error al registrar el afilado');
+      try {
+        console.log('Enviando datos de afilado:', data);
+        const response = await afiladoService.createAfilado(data);
+        
+        if (response.success) {
+          console.log('Afilado creado exitosamente:', response.data);
+          
+          // Esperamos un momento antes de redirigir para asegurar que el afilado
+          // esté disponible en la base de datos
+          setTimeout(() => {
+            // Asegurarnos de que tenemos un ID válido antes de redirigir
+            if (response.data && response.data.id) {
+              // Redirigir con state para mostrar mensaje de éxito
+              navigate(`/afilados/${response.data.id}`, { 
+                state: { 
+                  message: 'Afilado registrado correctamente',
+                  severity: 'success'
+                } 
+              });
+            } else {
+              // Si no hay ID, redirigir a la lista de afilados
+              navigate('/afilados', { 
+                state: { 
+                  message: 'Afilado registrado correctamente, pero no se pudo obtener su ID',
+                  severity: 'warning'
+                } 
+              });
+            }
+          }, 1000); // Esperar 1 segundo antes de redirigir
+          
+          return { success: true };
+        } else {
+          setError(response.error || 'Error al registrar el afilado');
+          return { success: false };
+        }
+      } catch (err) {
+        console.error('Error al crear afilado:', err);
+        setError('Error al registrar el afilado. Por favor, inténtelo de nuevo.');
         return { success: false };
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Error al registrar afilado:', err);
-      setError('Error al registrar el afilado. Por favor, inténtelo de nuevo.');
-      return { success: false };
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
   const handleCancel = () => {
     if (sierraPreseleccionada) {

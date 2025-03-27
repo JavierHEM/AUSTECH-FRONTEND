@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Box, 
-  Button, // Asegurarnos que Button está explícitamente importado
+  Button,
   CssBaseline, 
   AppBar, 
   Toolbar, 
@@ -25,7 +25,12 @@ import {
   ListItemButton,
   Tooltip,
   Snackbar,
-  Alert
+  Alert,
+  Paper,
+  InputBase,
+  Fade,
+  Zoom,
+  alpha
 } from '@mui/material';
 import { 
   Dashboard as DashboardIcon,
@@ -46,19 +51,29 @@ import {
   NotificationsNone as NotificationOffIcon,
   HelpOutline as HelpIcon,
   Brightness4 as DarkModeIcon,
-  Brightness7 as LightModeIcon
+  Brightness7 as LightModeIcon,
+  Search as SearchIcon,
+  ChevronLeft,
+  KeyboardArrowRight
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { useThemeMode } from '../../context/ThemeContext';
 import authService from '../../services/authService';
 import afiladoService from '../../services/afiladoService';
+import HelpCenter from '../help/HelpCenter';
+import UserProfileModal from '../user/UserProfileModal';
+import { motion } from 'framer-motion';
+
+// Logo
+import logo from '../../assets/logo.png';
 
 // Ancho del sidebar
 const drawerWidth = 280;
+const drawerCollapsedWidth = 80;
 
 const MainLayout = () => {
   const { user, logout } = useAuth();
-  const { darkMode, toggleDarkMode } = useThemeMode(); // Obtener el estado del modo oscuro
+  const { darkMode, toggleDarkMode } = useThemeMode();
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
@@ -66,6 +81,9 @@ const MainLayout = () => {
   
   // Estado para manejar la apertura/cierre del sidebar en móviles
   const [mobileOpen, setMobileOpen] = useState(false);
+  
+  // Estado para colapsar el sidebar en escritorio
+  const [isCollapsed, setIsCollapsed] = useState(false);
   
   // Estado para el menú de usuario
   const [anchorEl, setAnchorEl] = useState(null);
@@ -91,6 +109,12 @@ const MainLayout = () => {
     message: '',
     severity: 'info'
   });
+
+  // Estado para búsqueda
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // Comprobar si hay mensaje en la navegación (state)
   useEffect(() => {
@@ -142,6 +166,14 @@ const MainLayout = () => {
     setMobileOpen(!mobileOpen);
   };
 
+  const handleHelpClick = () => {
+    setHelpOpen(true);
+  };
+
+  const toggleDrawerCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+  };
+
   const handleUserMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
   };
@@ -165,8 +197,13 @@ const MainLayout = () => {
 
   const handleProfileClick = () => {
     handleUserMenuClose();
-    navigate('/perfil');
+    setProfileModalOpen(true);
   };
+
+  const handleCloseProfileModal = () => {
+    setProfileModalOpen(false);
+  };
+  
 
   const handleSubMenuToggle = (menuName) => {
     setOpenSubMenus(prev => ({
@@ -201,6 +238,14 @@ const MainLayout = () => {
     setNotifications([]);
     setNotificationCount(0);
     handleNotificationMenuClose();
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/busqueda?q=${encodeURIComponent(searchQuery)}`);
+      setSearchQuery('');
+    }
   };
 
   // Items del menú lateral
@@ -279,361 +324,811 @@ const MainLayout = () => {
     return item.items && item.items.some(subItem => isActiveRoute(subItem.path));
   };
 
+  const getMenuItemLabel = () => {
+    // Buscar en items normales
+    const activeItem = filteredMenuItems.find(item => {
+      if (item.submenu) {
+        return item.items.some(subItem => isActiveRoute(subItem.path));
+      }
+      return isActiveRoute(item.path);
+    });
+
+    if (activeItem) {
+      if (activeItem.submenu) {
+        // Si es un submenú, buscar cual subitem está activo
+        const activeSubItem = activeItem.items.find(subItem => isActiveRoute(subItem.path));
+        if (activeSubItem) {
+          return activeSubItem.text;
+        }
+      }
+      return activeItem.text;
+    }
+    
+    return 'Sistema Afilado';
+  };
+
   const drawer = (
     <>
       <Box 
         sx={{ 
           display: 'flex', 
           flexDirection: 'column', 
-          alignItems: 'center',
-          p: 2,
-          backgroundColor: darkMode ? 'primary.dark' : 'primary.main',
-          color: 'primary.contrastText'
+          alignItems: isCollapsed ? 'center' : 'flex-start',
+          p: isCollapsed ? 1 : 2,
+          background: darkMode 
+            ? `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${alpha(theme.palette.primary.main, 0.9)} 100%)`
+            : `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.light, 0.9)} 100%)`,
+          color: 'primary.contrastText',
+          overflow: 'hidden',
+          position: 'relative'
         }}
       >
-        {/* Logo o título del sistema */}
+        {/* Logo y título con botón de expansión/contracción integrado */}
         <Box 
           sx={{ 
-            height: 40, 
-            width: 40,
-            mb: 1,
-            bgcolor: 'primary.contrastText',
-            color: darkMode ? 'primary.dark' : 'primary.main',
-            borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 'bold',
-            fontSize: '1.2rem'
+            width: '100%',
+            justifyContent: isCollapsed ? 'center' : 'space-between',
+            overflow: 'hidden'  // Añadido para controlar desbordamiento
           }}
         >
-          SA
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Zoom in={true} style={{ transitionDelay: '100ms' }}>
+              <Box
+                component="img"
+                src={logo}
+                alt="Logo Sistema Afilado"
+                sx={{
+                  height: isCollapsed ? 30 : 40,  // Reducido un poco
+                  maxWidth: isCollapsed ? drawerCollapsedWidth - 20 : 'auto',  // Control de ancho máximo
+                  objectFit: isCollapsed ? 'cover' : 'contain',  // Ajuste de imagen
+                  objectPosition: isCollapsed ? 'left center' : 'center',  // Posición del recorte
+                  transition: 'all 0.3s ease',
+                }}
+              />
+            </Zoom>
+            {!isCollapsed && (
+              <Fade in={true} timeout={800}>
+                <Typography 
+                  variant="h6" 
+                  component="div" 
+                  fontWeight="bold" 
+                  sx={{ 
+                    ml: 1,
+                    whiteSpace: 'nowrap',
+                    textShadow: '1px 1px 2px rgba(0,0,0,0.15)'
+                  }}
+                >
+                  Sistema Afilado
+                </Typography>
+              </Fade>
+            )}
+          </Box>
+          
+          {/* Botón de contracción integrado en el header */}
+          {!isMobile && !isCollapsed && (
+            <IconButton
+              onClick={toggleDrawerCollapse}
+              size="small"
+              sx={{
+                color: 'white',
+                backgroundColor: alpha(theme.palette.common.white, 0.1),
+                '&:hover': {
+                  backgroundColor: alpha(theme.palette.common.white, 0.2),
+                }
+              }}
+            >
+              <ChevronLeft />
+            </IconButton>
+          )}
         </Box>
-        <Typography variant="h5" component="div" fontWeight="bold" sx={{ my: 1 }}>
-          Sistema Afilado
-        </Typography>
+        
+        {/* Si está colapsado, mostrar botón para expandir en la parte inferior */}
+        {!isMobile && isCollapsed && (
+          <IconButton
+            onClick={toggleDrawerCollapse}
+            size="small"
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              bottom: 16,
+              color: 'white',
+              backgroundColor: alpha(theme.palette.common.white, 0.1),
+              '&:hover': {
+                backgroundColor: alpha(theme.palette.common.white, 0.2),
+              },
+              zIndex: 1100,
+            }}
+          >
+            <KeyboardArrowRight />
+          </IconButton>
+        )}
+        
+        {/* Información del usuario en el drawer */}
+        {!isCollapsed && (
+          <Box 
+            component={motion.div}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            sx={{ 
+              mt: 4, 
+              mb: 2, 
+              display: 'flex', 
+              alignItems: 'center',
+              width: '100%'
+            }}
+          >
+            <Avatar 
+              sx={{ 
+                bgcolor: 'white',
+                color: 'primary.main',
+                boxShadow: '0px 2px 8px rgba(0,0,0,0.15)'
+              }}
+            >
+              {user?.nombre?.charAt(0) || 'U'}
+            </Avatar>
+            <Box sx={{ ml: 1.5, overflow: 'hidden' }}>
+              <Typography 
+                variant="subtitle2" 
+                noWrap
+                fontWeight="bold"
+              >
+                {user?.nombre || 'Usuario'}
+              </Typography>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  display: 'block',
+                  color: alpha(theme.palette.common.white, 0.8),
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  fontWeight: 'medium'
+                }}
+              >
+                {user?.rol || 'Usuario'}
+              </Typography>
+            </Box>
+          </Box>
+        )}
       </Box>
+      
       <Divider />
-      <Box sx={{ overflow: 'auto', flexGrow: 1 }}>
-        <List>
-          {filteredMenuItems.map((item) => (
+      
+      <Box 
+        sx={{ 
+          overflow: 'auto', 
+          flexGrow: 1,
+          px: isCollapsed ? 0 : 1,
+          py: 1,
+          transition: 'all 0.3s ease'
+        }}
+      >
+        <List component="nav">
+          {filteredMenuItems.map((item, index) => (
             item.submenu ? (
-              <React.Fragment key={item.text}>
+              <React.Fragment key={item.text || index}>
                 <ListItemButton
                   onClick={() => handleSubMenuToggle(item.text.toLowerCase())}
                   sx={{
-                    borderRadius: '8px',
-                    mx: 1,
+                    borderRadius: '10px',
                     mb: 0.5,
-                    backgroundColor: isActiveSubRoute(item) ? 'rgba(21, 101, 192, 0.12)' : 'transparent',
-                    color: isActiveSubRoute(item) ? 'primary.main' : 'inherit',
+                    py: 1.2,
+                    px: isCollapsed ? 1 : 2,
+                    minHeight: 48,
+                    backgroundColor: isActiveSubRoute(item) ? alpha(theme.palette.primary.main, 0.12) : 'transparent',
+                    color: isActiveSubRoute(item) ? 'primary.main' : 'text.primary',
                     '&:hover': {
-                      backgroundColor: 'rgba(21, 101, 192, 0.08)',
+                      backgroundColor: alpha(theme.palette.primary.main, 0.08),
                     },
+                    justifyContent: isCollapsed ? 'center' : 'initial',
+                    transition: 'background-color 0.2s ease'
                   }}
                 >
                   <ListItemIcon sx={{ 
-                    color: isActiveSubRoute(item) ? 'primary.main' : 'inherit'
+                    color: isActiveSubRoute(item) ? 'primary.main' : 'inherit',
+                    minWidth: isCollapsed ? 0 : 40,
+                    mr: isCollapsed ? 0 : 2,
+                    justifyContent: 'center'
                   }}>
                     {item.icon}
                   </ListItemIcon>
-                  <ListItemText primary={item.text} />
-                  {openSubMenus[item.text.toLowerCase()] ? <ExpandLess /> : <ExpandMore />}
+                  
+                  {!isCollapsed && (
+                    <>
+                      <ListItemText 
+                        primary={item.text} 
+                        primaryTypographyProps={{ 
+                          fontSize: '0.95rem',
+                          fontWeight: isActiveSubRoute(item) ? 'medium' : 'normal'
+                        }}
+                      />
+                      {openSubMenus[item.text.toLowerCase()] ? <ExpandLess /> : <ExpandMore />}
+                    </>
+                  )}
                 </ListItemButton>
-                <Collapse 
-                  in={openSubMenus[item.text.toLowerCase()]} 
-                  timeout="auto" 
-                  unmountOnExit
-                >
-                  <List component="div" disablePadding>
-                    {item.items.map((subItem) => (
-                      <ListItemButton
-                        key={subItem.text}
-                        sx={{
-                          pl: 4,
-                          borderRadius: '8px',
-                          mx: 1,
-                          mb: 0.5,
-                          backgroundColor: isActiveRoute(subItem.path) ? 'rgba(21, 101, 192, 0.12)' : 'transparent',
-                          color: isActiveRoute(subItem.path) ? 'primary.main' : 'inherit',
-                          '&:hover': {
-                            backgroundColor: 'rgba(21, 101, 192, 0.08)',
-                          },
-                        }}
-                        onClick={() => {
-                          navigate(subItem.path);
-                          if (isMobile) setMobileOpen(false);
-                        }}
-                      >
-                        <ListItemText 
-                          primary={subItem.text} 
-                          primaryTypographyProps={{ 
-                            fontSize: '0.9rem',
-                            fontWeight: isActiveRoute(subItem.path) ? 'medium' : 'normal'
-                          }} 
-                        />
-                      </ListItemButton>
-                    ))}
-                  </List>
-                </Collapse>
+                
+                {/* Submenús (solo visible cuando no está colapsado) */}
+                {!isCollapsed && (
+                  <Collapse 
+                    in={openSubMenus[item.text.toLowerCase()]} 
+                    timeout="auto" 
+                    unmountOnExit
+                  >
+                    <List component="div" disablePadding>
+                      {item.items.map((subItem, subIndex) => (
+                        <ListItemButton
+                          key={subItem.text || `subitem-${subIndex}`}
+                          sx={{
+                            pl: 4,
+                            py: 1,
+                            borderRadius: '10px',
+                            mb: 0.5,
+                            backgroundColor: isActiveRoute(subItem.path) ? alpha(theme.palette.primary.main, 0.12) : 'transparent',
+                            color: isActiveRoute(subItem.path) ? 'primary.main' : 'text.primary',
+                            '&:hover': {
+                              backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                            },
+                            transition: 'background-color 0.2s ease'
+                          }}
+                          onClick={() => {
+                            navigate(subItem.path);
+                            if (isMobile) setMobileOpen(false);
+                          }}
+                        >
+                          <ListItemText 
+                            primary={subItem.text} 
+                            primaryTypographyProps={{ 
+                              fontSize: '0.85rem',
+                              fontWeight: isActiveRoute(subItem.path) ? 'medium' : 'normal'
+                            }} 
+                          />
+                        </ListItemButton>
+                      ))}
+                    </List>
+                  </Collapse>
+                )}
               </React.Fragment>
             ) : (
-              <ListItemButton
-                key={item.text} 
-                onClick={() => {
-                  navigate(item.path);
-                  if (isMobile) setMobileOpen(false);
-                }}
-                sx={{
-                  borderRadius: '8px',
-                  mx: 1,
-                  mb: 0.5,
-                  backgroundColor: isActiveRoute(item.path) ? 'rgba(21, 101, 192, 0.12)' : 'transparent',
-                  color: isActiveRoute(item.path) ? 'primary.main' : 'inherit',
-                  '&:hover': {
-                    backgroundColor: 'rgba(21, 101, 192, 0.08)',
-                  },
-                }}
+              <Tooltip 
+                key={item.text || `item-${index}`}
+                title={isCollapsed ? item.text : ""}
+                placement="right"
+                arrow
               >
-                <ListItemIcon sx={{ 
-                  color: isActiveRoute(item.path) ? 'primary.main' : 'inherit'
-                }}>
-                  {item.icon}
-                </ListItemIcon>
-                <ListItemText primary={item.text} />
-              </ListItemButton>
+                <ListItemButton
+                  onClick={() => {
+                    navigate(item.path);
+                    if (isMobile) setMobileOpen(false);
+                  }}
+                  sx={{
+                    borderRadius: '10px',
+                    mb: 0.5,
+                    py: 1.2,
+                    px: isCollapsed ? 1 : 2,
+                    minHeight: 48,
+                    backgroundColor: isActiveRoute(item.path) ? alpha(theme.palette.primary.main, 0.12) : 'transparent',
+                    color: isActiveRoute(item.path) ? 'primary.main' : 'text.primary',
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.primary.main, 0.08),
+                    },
+                    justifyContent: isCollapsed ? 'center' : 'initial',
+                    transition: 'background-color 0.2s ease'
+                  }}
+                >
+                  <ListItemIcon sx={{ 
+                    color: isActiveRoute(item.path) ? 'primary.main' : 'inherit',
+                    minWidth: isCollapsed ? 0 : 40,
+                    mr: isCollapsed ? 0 : 2,
+                    justifyContent: 'center'
+                  }}>
+                    {item.icon}
+                  </ListItemIcon>
+                  
+                  {!isCollapsed && (
+                    <ListItemText 
+                      primary={item.text} 
+                      primaryTypographyProps={{ 
+                        fontSize: '0.95rem',
+                        fontWeight: isActiveRoute(item.path) ? 'medium' : 'normal'
+                      }}
+                    />
+                  )}
+                </ListItemButton>
+              </Tooltip>
             )
           ))}
         </List>
       </Box>
+      
       <Divider />
-      <Box sx={{ p: 2 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1 }}>
-          © {new Date().getFullYear()} Sistema Afilado
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>
-          v1.0.0
-        </Typography>
-      </Box>
+      
+      {!isCollapsed && (
+        <Box 
+          sx={{ 
+            p: 2, 
+            textAlign: 'center',
+            backgroundColor: darkMode ? 'background.paper' : alpha(theme.palette.grey[100], 0.7)
+          }}
+        >
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            © {new Date().getFullYear()} Sistema Afilado
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            v1.0.0
+          </Typography>
+        </Box>
+      )}
     </>
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box 
+      sx={{ 
+        display: 'flex', 
+        minHeight: '100vh',
+        backgroundColor: 'background.default'
+      }}
+    >
       <CssBaseline />
       
       {/* Barra superior */}
       <AppBar
         position="fixed"
+        elevation={0}
         sx={{
-          width: { md: `calc(100% - ${drawerWidth}px)` },
-          ml: { md: `${drawerWidth}px` },
-          boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.05)',
+          width: { 
+            xs: '100%',
+            md: isCollapsed 
+              ? `calc(100% - ${drawerCollapsedWidth}px)` 
+              : `calc(100% - ${drawerWidth}px)` 
+          },
+          ml: { 
+            xs: 0, 
+            md: isCollapsed ? drawerCollapsedWidth : drawerWidth 
+          },
           bgcolor: darkMode ? 'background.paper' : 'background.paper',
-          color: darkMode ? 'text.primary' : 'text.primary'
+          color: 'text.primary',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          transition: 'all 0.3s ease'
         }}
       >
-        <Toolbar>
-          <IconButton
-            color="inherit"
-            aria-label="abrir menú"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { md: 'none' } }}
-          >
-            <MenuIcon />
-          </IconButton>
-          
-          <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="h6" noWrap component="div">
-              {filteredMenuItems.find(item => {
-                if (item.submenu) {
-                  return item.items.some(subItem => isActiveRoute(subItem.path));
-                }
-                return isActiveRoute(item.path);
-              })?.text || 'Sistema Afilado'}
+        <Toolbar sx={{ justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <IconButton
+              color="inherit"
+              aria-label="abrir menú"
+              edge="start"
+              onClick={handleDrawerToggle}
+              sx={{ mr: 2, display: { md: 'none' } }}
+            >
+              <MenuIcon />
+            </IconButton>
+            
+            <Typography 
+              variant="h6" 
+              noWrap 
+              component="div"
+              sx={{ 
+                fontWeight: 'medium',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              {getMenuItemLabel()}
             </Typography>
           </Box>
           
-          {/* Botón de modo oscuro/claro */}
-          <Tooltip title={darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}>
-            <IconButton onClick={toggleDarkMode} color="inherit" sx={{ mr: 1 }}>
-              {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
-            </IconButton>
-          </Tooltip>
-          
-          {/* Botón de ayuda */}
-          <Tooltip title="Ayuda">
-            <IconButton
-              size="large"
-              color="inherit"
-              onClick={() => navigate('/ayuda')}
-              sx={{ mr: 1 }}
-            >
-              <HelpIcon />
-            </IconButton>
-          </Tooltip>
-          
-          {/* Notificaciones */}
-          <Tooltip title="Notificaciones">
-            <IconButton
-              size="large"
-              color="inherit"
-              onClick={handleNotificationMenuOpen}
-              sx={{ mr: 1 }}
-            >
-              <Badge badgeContent={notificationCount} color="error">
-                <NotificationsIcon />
-              </Badge>
-            </IconButton>
-          </Tooltip>
-          <Menu
-            anchorEl={notificationAnchorEl}
-            open={openNotificationMenu}
-            onClose={handleNotificationMenuClose}
-            PaperProps={{
-              elevation: 2,
-              sx: { 
-                width: 320,
-                maxHeight: 400,
-                overflow: 'auto'
-              }
+          {/* Barra de búsqueda */}
+          <Box 
+            component="form"
+            onSubmit={handleSearch}
+            sx={{
+              display: { xs: 'none', sm: 'block' },
+              position: 'relative',
+              ml: 3,
+              mr: 'auto',
+              width: '40%',
+              maxWidth: '500px'
             }}
-            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
           >
-            <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="subtitle1" fontWeight="bold">
-                Notificaciones
-              </Typography>
-            </Box>
-            
-            {notifications.length === 0 ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3 }}>
-                <NotificationOffIcon color="disabled" sx={{ fontSize: 40, mb: 1 }} />
-                <Typography variant="body2" color="text.secondary">
-                  No hay notificaciones
-                </Typography>
-              </Box>
-            ) : (
-              <>
-                {notifications.map(notification => (
-                  <MenuItem 
-                    key={notification.id} 
-                    onClick={() => handleNotificationClick(notification.id)}
-                    sx={{ 
-                      borderLeft: notification.unread ? '3px solid' : 'none',
-                      borderColor: 'primary.main',
-                      backgroundColor: notification.unread ? 'rgba(21, 101, 192, 0.08)' : 'transparent',
-                      py: 1.5
-                    }}
-                  >
-                    <Box sx={{ width: '100%' }}>
-                      <Typography variant="subtitle2" fontWeight={notification.unread ? 'bold' : 'normal'}>
-                        {notification.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" noWrap>
-                        {notification.description}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {notification.time}
-                      </Typography>
-                    </Box>
-                  </MenuItem>
-                ))}
-                <Divider />
-                <Box sx={{ p: 1, textAlign: 'center' }}>
-                  <Button 
-                    size="small" 
-                    onClick={handleClearAllNotifications}
-                  >
-                    Borrar todas
-                  </Button>
-                  <Button 
-                    size="small" 
-                    color="primary"
-                    onClick={() => {
-                      navigate('/afilados?pendientes=true');
-                      handleNotificationMenuClose();
-                    }}
-                  >
-                    Ver todas
-                  </Button>
-                </Box>
-              </>
-            )}
-          </Menu>
+            <Paper
+              elevation={0}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                borderRadius: '100px',
+                px: 2,
+                height: 40,
+                border: '1px solid',
+                borderColor: 'divider',
+                '&:hover': {
+                  boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.1)}`
+                },
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <SearchIcon sx={{ color: 'text.secondary', mr: 1 }} />
+              <InputBase
+                placeholder="Buscar..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                sx={{ 
+                  flex: 1,
+                  fontSize: '0.9rem'
+                }}
+              />
+            </Paper>
+          </Box>
           
-          {/* Perfil de usuario */}
-          <Box>
-            <Tooltip title={user?.nombre || 'Usuario'}>
-              <IconButton
-                onClick={handleUserMenuOpen}
-                size="small"
-                aria-controls={openUserMenu ? 'user-menu' : undefined}
-                aria-haspopup="true"
-                aria-expanded={openUserMenu ? 'true' : undefined}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>  
+            {/* Botón de modo oscuro/claro */}
+            <Tooltip title={darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}>
+              <IconButton 
+                onClick={toggleDarkMode} 
+                color="inherit" 
+                sx={{ 
+                  mr: 1,
+                  transition: 'transform 0.2s ease-in-out',
+                  '&:hover': {
+                    transform: 'scale(1.1)',
+                  },
+                }}
               >
-                <Avatar sx={{ 
-                  width: 40, 
-                  height: 40, 
-                  bgcolor: 'primary.main',
-                  color: 'primary.contrastText'
-                }}>
-                  {user?.nombre?.charAt(0) || 'U'}
-                </Avatar>
+                {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
               </IconButton>
             </Tooltip>
+            
+            {/* Botón de ayuda */}
+            <Tooltip title="Ayuda">
+              <IconButton
+                color="inherit"
+                onClick={handleHelpClick}
+                sx={{ 
+                  mr: 1,
+                  transition: 'transform 0.2s ease-in-out',
+                  '&:hover': {
+                    transform: 'scale(1.1)',
+                  },
+                }}
+              >
+                <HelpIcon />
+              </IconButton>
+            </Tooltip>
+            
+            {/* Notificaciones */}
+            <Tooltip title="Notificaciones">
+              <IconButton
+                color="inherit"
+                onClick={handleNotificationMenuOpen}
+                sx={{ 
+                  mr: 1.5,
+                  transition: 'transform 0.2s ease-in-out',
+                  '&:hover': {
+                    transform: 'scale(1.1)',
+                  },
+                }}
+              >
+                <Badge 
+                  badgeContent={notificationCount} 
+                  color="error"
+                  sx={{
+                    '& .MuiBadge-badge': {
+                      transform: 'scale(0.9) translate(50%, -50%)',
+                    }
+                  }}
+                >
+                  <NotificationsIcon />
+                </Badge>
+              </IconButton>
+            </Tooltip>
+            
+            {/* Menú de notificaciones */}
             <Menu
-              id="user-menu"
-              anchorEl={anchorEl}
-              open={openUserMenu}
-              onClose={handleUserMenuClose}
-              MenuListProps={{
-                'aria-labelledby': 'user-button',
-              }}
+              anchorEl={notificationAnchorEl}
+              open={openNotificationMenu}
+              onClose={handleNotificationMenuClose}
               PaperProps={{
-                elevation: 2,
-                sx: { minWidth: 200 }
+                elevation: 3,
+                sx: { 
+                  width: 320,
+                  maxHeight: 440,
+                  overflow: 'auto',
+                  borderRadius: 2,
+                  mt: 1,
+                  pt: 1
+                }
               }}
               transformOrigin={{ horizontal: 'right', vertical: 'top' }}
               anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
             >
-              <Box sx={{ px: 2, py: 1 }}>
+              <Box 
+                sx={{ 
+                  p: 2, 
+                  borderBottom: '1px solid', 
+                  borderColor: 'divider',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
                 <Typography variant="subtitle1" fontWeight="bold">
-                  {user?.nombre || 'Usuario'}
+                  Notificaciones
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {user?.email || 'email@example.com'}
-                </Typography>
-                <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 0.5 }}>
-                  {user?.rol || 'Usuario'}
-                </Typography>
+                <Badge 
+                  badgeContent={notificationCount} 
+                  color="error"
+                  sx={{ transform: 'scale(0.8)' }}
+                >
+                  <NotificationsIcon fontSize="small" />
+                </Badge>
               </Box>
-              <Divider />
-              <MenuItem onClick={handleProfileClick}>
-                <ListItemIcon>
-                  <AccountCircle fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>Mi Perfil</ListItemText>
-              </MenuItem>
-              <MenuItem onClick={() => {
-                handleUserMenuClose();
-                navigate('/configuracion');
-              }}>
-                <ListItemIcon>
-                  <Settings fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>Configuración</ListItemText>
-              </MenuItem>
-              <Divider />
-              <MenuItem onClick={handleLogout}>
-                <ListItemIcon>
-                  <Logout fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>Cerrar Sesión</ListItemText>
-              </MenuItem>
+              
+              {notifications.length === 0 ? (
+                <Box 
+                  sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    py: 4 
+                  }}
+                >
+                  <NotificationOffIcon 
+                    color="disabled" 
+                    sx={{ 
+                      fontSize: 48, 
+                      mb: 1.5,
+                      opacity: 0.7 
+                    }} 
+                  />
+                  <Typography variant="body2" color="text.secondary">
+                    No tienes notificaciones
+                  </Typography>
+                </Box>
+              ) : (
+                <>
+                  <List sx={{ py: 0 }}>
+                    {notifications.map((notification, index) => (
+                      <ListItem 
+                        key={notification.id || `notification-${index}`}
+                        component={motion.div}
+                        whileHover={{ 
+                          backgroundColor: alpha(theme.palette.primary.main, 0.05),
+                          x: 2
+                        }}
+                        button
+                        onClick={() => handleNotificationClick(notification.id)}
+                        sx={{ 
+                          borderLeft: notification.unread ? '3px solid' : 'none',
+                          borderColor: 'primary.main',
+                          backgroundColor: notification.unread ? alpha(theme.palette.primary.main, 0.08) : 'transparent',
+                          py: 1.5,
+                          px: 2
+                        }}
+                      >
+                        <Box sx={{ width: '100%' }}>
+                          <Typography 
+                            variant="subtitle2" 
+                            fontWeight={notification.unread ? 'bold' : 'normal'}
+                            sx={{ mb: 0.5 }}
+                          >
+                            {notification.title}
+                          </Typography>
+                          <Typography 
+                            variant="body2" 
+                            color="text.secondary" 
+                            noWrap
+                            sx={{ mb: 0.5 }}
+                          >
+                            {notification.description}
+                          </Typography>
+                          <Typography 
+                            variant="caption" 
+                            color="text.secondary"
+                            sx={{ 
+                              display: 'block',
+                              textAlign: 'right',
+                              fontStyle: 'italic'
+                            }}
+                          >
+                            {notification.time}
+                          </Typography>
+                        </Box>
+                      </ListItem>
+                    ))}
+                  </List>
+                  
+                  <Divider />
+                  
+                  <Box 
+                    sx={{ 
+                      p: 1.5, 
+                      display: 'flex', 
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <Button 
+                      size="small" 
+                      color="inherit"
+                      onClick={handleClearAllNotifications}
+                      sx={{ fontSize: '0.8rem' }}
+                    >
+                      Borrar todas
+                    </Button>
+                    <Button 
+                      size="small" 
+                      variant="contained"
+                      color="primary"
+                      onClick={() => {
+                        navigate('/afilados?pendientes=true');
+                        handleNotificationMenuClose();
+                      }}
+                      sx={{ fontSize: '0.8rem' }}
+                    >
+                      Ver todas
+                    </Button>
+                  </Box>
+                </>
+              )}
             </Menu>
+            
+            {/* Perfil de usuario */}
+            <Box>
+              <Tooltip title={user?.nombre || 'Usuario'}>
+                <IconButton
+                  onClick={handleUserMenuOpen}
+                  size="small"
+                  aria-controls={openUserMenu ? 'user-menu' : undefined}
+                  aria-haspopup="true"
+                  aria-expanded={openUserMenu ? 'true' : undefined}
+                  sx={{ 
+                    p: 0.5,
+                    border: '2px solid',
+                    borderColor: 'primary.main',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      transform: 'scale(1.05)',
+                    }
+                  }}
+                >
+                  <Avatar sx={{ 
+                    width: 36, 
+                    height: 36, 
+                    bgcolor: darkMode ? 'primary.dark' : 'primary.main',
+                    color: 'white',
+                    fontWeight: 'bold'
+                  }}>
+                    {user?.nombre?.charAt(0) || 'U'}
+                  </Avatar>
+                </IconButton>
+              </Tooltip>
+              
+              <Menu
+                id="user-menu"
+                anchorEl={anchorEl}
+                open={openUserMenu}
+                onClose={handleUserMenuClose}
+                MenuListProps={{
+                  'aria-labelledby': 'user-button',
+                }}
+                PaperProps={{
+                  elevation: 3,
+                  sx: { 
+                    minWidth: 220,
+                    borderRadius: 2,
+                    mt: 1,
+                    overflow: 'visible',
+                    '&:before': {
+                      content: '""',
+                      display: 'block',
+                      position: 'absolute',
+                      top: 0,
+                      right: 14,
+                      width: 10,
+                      height: 10,
+                      bgcolor: 'background.paper',
+                      transform: 'translateY(-50%) rotate(45deg)',
+                      zIndex: 0,
+                    }
+                  }
+                }}
+                transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+              >
+                <Box 
+                  sx={{ 
+                    px: 2.5, 
+                    py: 2,
+                    borderBottom: '1px solid',
+                    borderColor: alpha(theme.palette.divider, 0.7)
+                  }}
+                >
+                  <Typography variant="subtitle1" fontWeight="bold">
+                    {user?.nombre || 'Usuario'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {user?.email || 'email@example.com'}
+                  </Typography>
+                  <Box 
+                    sx={{
+                      display: 'inline-block',
+                      mt: 1,
+                      px: 1.5,
+                      py: 0.5,
+                      borderRadius: '100px',
+                      backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                      color: 'primary.main',
+                      fontSize: '0.7rem',
+                      fontWeight: 'medium',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}
+                  >
+                    {user?.rol || 'Usuario'}
+                  </Box>
+                </Box>
+                
+                <MenuItem 
+                  onClick={handleProfileClick}
+                  sx={{ 
+                    py: 1.5,
+                    pl: 2.5,
+                    transition: 'background-color 0.2s ease',
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.primary.main, 0.08)
+                    }
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    <AccountCircle fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText primary="Mi Perfil" />
+                </MenuItem>
+                
+                <MenuItem 
+                  onClick={() => {
+                    handleUserMenuClose();
+                    navigate('/configuracion');
+                  }}
+                  sx={{ 
+                    py: 1.5,
+                    pl: 2.5,
+                    transition: 'background-color 0.2s ease',
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.primary.main, 0.08)
+                    }
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    <Settings fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText primary="Configuración" />
+                </MenuItem>
+                
+                <Divider />
+                
+                <MenuItem 
+                  onClick={handleLogout}
+                  sx={{ 
+                    py: 1.5,
+                    pl: 2.5,
+                    color: theme.palette.error.main,
+                    transition: 'background-color 0.2s ease',
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.error.main, 0.08)
+                    }
+                  }}
+                >
+                  <ListItemIcon sx={{ color: 'inherit', minWidth: 36 }}>
+                    <Logout fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText primary="Cerrar Sesión" />
+                </MenuItem>
+              </Menu>
+            </Box>
           </Box>
         </Toolbar>
       </AppBar>
@@ -641,7 +1136,14 @@ const MainLayout = () => {
       {/* Menú lateral para pantallas móviles */}
       <Box
         component="nav"
-        sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
+        sx={{ 
+          width: { 
+            xs: 0, 
+            md: isCollapsed ? drawerCollapsedWidth : drawerWidth 
+          }, 
+          flexShrink: { md: 0 },
+          transition: 'width 0.3s ease'
+        }}
         aria-label="menú de navegación"
       >
         {/* Versión móvil */}
@@ -654,7 +1156,11 @@ const MainLayout = () => {
           }}
           sx={{
             display: { xs: 'block', md: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
+            '& .MuiDrawer-paper': { 
+              boxSizing: 'border-box', 
+              width: drawerWidth,
+              borderRadius: '0 16px 16px 0'
+            },
           }}
         >
           {drawer}
@@ -665,7 +1171,14 @@ const MainLayout = () => {
           variant="permanent"
           sx={{
             display: { xs: 'none', md: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
+            '& .MuiDrawer-paper': { 
+              boxSizing: 'border-box', 
+              width: isCollapsed ? drawerCollapsedWidth : drawerWidth,
+              borderRight: '1px solid',
+              borderColor: 'divider',
+              transition: 'width 0.3s ease',
+              overflowX: 'hidden'
+            },
           }}
           open
         >
@@ -678,11 +1191,16 @@ const MainLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
-          width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
+          p: { xs: 2, sm: 3 },
+          width: { 
+            xs: '100%', 
+            md: isCollapsed 
+              ? `calc(100% - ${drawerCollapsedWidth}px)` 
+              : `calc(100% - ${drawerWidth}px)` 
+          },
           mt: '64px',
-          backgroundColor: 'background.default',
           minHeight: 'calc(100vh - 64px)',
+          transition: 'all 0.3s ease'
         }}
       >
         <Outlet />
@@ -700,10 +1218,45 @@ const MainLayout = () => {
           severity={alert.severity}
           variant="filled"
           elevation={6}
+          sx={{ 
+            borderRadius: 2,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+          }}
         >
           {alert.message}
         </Alert>
       </Snackbar>
+      <HelpCenter open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      <UserProfileModal 
+        open={profileModalOpen} 
+        onClose={handleCloseProfileModal} 
+        user={user} 
+        onUpdateProfile={(updatedUserData) => {
+          // Llamada real a tu servicio de actualización
+          authService.updateProfile(user.id, updatedUserData)
+            .then((response) => {
+              if (response.success) {
+                // Actualizar el estado local o el contexto
+                setUser(response.data.usuario);
+                // Mostrar mensaje de éxito
+                setAlert({
+                  open: true,
+                  message: 'Perfil actualizado correctamente',
+                  severity: 'success'
+                });
+              }
+            })
+            .catch((error) => {
+              // Manejar errores
+              setAlert({
+                open: true,
+                message: 'Error al actualizar el perfil',
+                severity: 'error'
+              });
+            });
+        }}
+      />  
     </Box>
   );
 };

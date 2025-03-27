@@ -43,7 +43,8 @@ import {
   Print as PrintIcon,
   Share as ShareIcon,
   Edit as EditIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import afiladoService from '../../services/afiladoService';
@@ -62,6 +63,8 @@ const AfiladoDetail = () => {
   const [loadingAccion, setLoadingAccion] = useState(false);
   const [error, setError] = useState(null);
   const [confirmSalida, setConfirmSalida] = useState(false);
+  const [reloadCounter, setReloadCounter] = useState(0); // Para intentar recargar si es necesario
+  const [showSuccessMessage, setShowSuccessMessage] = useState(!!location.state?.message);
   
   // Estado para manejar si el usuario puede editar afilados
   const canManageAfilados = user?.rol === 'Gerente' || user?.rol === 'Administrador';
@@ -82,29 +85,48 @@ const AfiladoDetail = () => {
     setError(null);
     
     try {
-      // En un caso real, tendrías un endpoint para obtener el detalle de un afilado
-      // Simulamos obteniendo los afilados de la sierra y filtrando
-      const sierraId = "1"; // Esto lo obtendrías del afilado una vez lo tengas
-      const response = await afiladoService.getAfiladosBySierra(sierraId);
+      console.log(`Cargando afilado con ID: ${id}`);
       
-      if (response.success) {
-        // Filtrar el afilado específico por ID
-        const afiladoEncontrado = response.data.find(a => a.id === parseInt(id));
-        if (afiladoEncontrado) {
-          setAfilado(afiladoEncontrado);
-          
-          // Obtener historial de la sierra
-          // Normalmente sería otra llamada API, pero aquí simulamos
-          setHistorialSierra(response.data.filter(a => a.id !== parseInt(id)).slice(0, 5));
-        } else {
-          setError('Afilado no encontrado');
+      // Obtener el afilado específico por ID
+      const response = await afiladoService.getAfiladoById(id);
+      
+      if (response.success && response.data) {
+        console.log('Datos del afilado cargados:', response.data);
+        setAfilado(response.data);
+        
+        // Si el afilado tiene sierra_id, obtener historial de la sierra
+        if (response.data.sierra_id) {
+          try {
+            const historialResponse = await afiladoService.getAfiladosBySierra(response.data.sierra_id);
+            if (historialResponse.success) {
+              // Filtrar para excluir el afilado actual y mostrar solo los 5 más recientes
+              const otrosAfilados = historialResponse.data
+                .filter(a => a.id !== parseInt(id))
+                .sort((a, b) => new Date(b.fecha_afilado) - new Date(a.fecha_afilado))
+                .slice(0, 5);
+              
+              setHistorialSierra(otrosAfilados);
+            }
+          } catch (err) {
+            console.error('Error al cargar historial de la sierra:', err);
+            // No establecer error aquí, para no bloquear la visualización del afilado
+          }
         }
       } else {
-        setError('Error al cargar la información del afilado');
+        console.error('Error al cargar afilado:', response.error);
+        setError(response.error || 'No se pudo cargar el afilado');
+        
+        // Si es el primer intento y acabamos de ser redirigidos después de crear el afilado,
+        // intentar de nuevo después de un breve retraso
+        if (reloadCounter === 0 && location.state?.message) {
+          setTimeout(() => {
+            setReloadCounter(prev => prev + 1);
+          }, 2000);
+        }
       }
     } catch (err) {
-      console.error('Error al cargar datos del afilado:', err);
-      setError('Error al cargar la información. Por favor, inténtelo de nuevo.');
+      console.error('Error inesperado al cargar afilado:', err);
+      setError('Ocurrió un error al cargar los datos del afilado');
     } finally {
       setLoading(false);
     }
@@ -113,12 +135,15 @@ const AfiladoDetail = () => {
   useEffect(() => {
     loadAfiladoData();
     
-    // Verificar si hay un mensaje en la navegación
-    if (location.state?.message) {
-      // Aquí podrías mostrar un snackbar o alerta temporal
-      // Para este ejemplo, no hacemos nada ya que la UI principal se ocupa de esto
+    // Limpiar el mensaje de éxito después de unos segundos
+    if (showSuccessMessage) {
+      const timer = setTimeout(() => {
+        setShowSuccessMessage(false);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
     }
-  }, [id, location]);
+  }, [id, reloadCounter, location.state]);
 
   // Función para registrar la salida del afilado
   const handleRegistrarSalida = async () => {
@@ -141,30 +166,105 @@ const AfiladoDetail = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+      <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="50vh">
         <CircularProgress />
+        <Typography variant="body1" sx={{ mt: 2 }}>
+          Cargando datos del afilado...
+        </Typography>
       </Box>
     );
   }
 
   if (error) {
     return (
-      <Alert severity="error" sx={{ mt: 2 }}>
-        {error}
-      </Alert>
+      <Box>
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="contained"
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate('/afilados')}
+          >
+            Volver a Afilados
+          </Button>
+          
+          {reloadCounter < 3 && (
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={() => {
+                setReloadCounter(prev => prev + 1);
+                loadAfiladoData();
+              }}
+            >
+              Intentar nuevamente
+            </Button>
+          )}
+        </Box>
+      </Box>
     );
   }
 
   if (!afilado) {
     return (
-      <Alert severity="info" sx={{ mt: 2 }}>
-        Afilado no encontrado
-      </Alert>
+      <Box>
+        <Card>
+          <CardContent>
+            <Typography variant="h5" component="div" gutterBottom>
+              Afilado no encontrado
+            </Typography>
+            <Typography variant="body1" color="text.secondary" paragraph>
+              No se pudo encontrar el afilado con ID: {id}. Esto puede deberse a que:
+            </Typography>
+            <Typography component="ul">
+              <li>El afilado fue eliminado</li>
+              <li>El ID proporcionado no es válido</li>
+              <li>No tienes permisos para ver este afilado</li>
+              <li>El afilado aún está siendo procesado en el sistema</li>
+            </Typography>
+            <Box sx={{ mt: 3 }}>
+              <Button
+                variant="contained"
+                startIcon={<ArrowBackIcon />}
+                onClick={() => navigate('/afilados')}
+                sx={{ mr: 2 }}
+              >
+                Volver a la lista de afilados
+              </Button>
+              {reloadCounter < 3 && (
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => {
+                    setReloadCounter(prev => prev + 1);
+                    loadAfiladoData();
+                  }}
+                >
+                  Intentar nuevamente
+                </Button>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
+      </Box>
     );
   }
 
   return (
     <Box>
+      {/* Mensaje de éxito si viene de creación/edición */}
+      {showSuccessMessage && location.state?.message && (
+        <Alert 
+          severity={location.state.severity || 'success'} 
+          sx={{ mb: 3 }}
+          onClose={() => setShowSuccessMessage(false)}
+        >
+          {location.state.message}
+        </Alert>
+      )}
+      
       {/* Navegación de migas de pan */}
       <Breadcrumbs sx={{ mb: 2 }}>
         <MuiLink component={Link} to="/" underline="hover" color="inherit">
@@ -233,7 +333,7 @@ const AfiladoDetail = () => {
                     <Box display="flex" alignItems="center">
                       <SierraIcon color="secondary" sx={{ mr: 1 }} />
                       <Typography variant="body1" fontWeight="medium">
-                        {afilado.sierras?.codigo || 'No especificada'}
+                        {afilado.sierras?.codigo_barra || afilado.sierras?.codigo || 'No especificada'}
                       </Typography>
                     </Box>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -549,6 +649,5 @@ const AfiladoDetail = () => {
     </Box>
   );
 };
-
 
 export default AfiladoDetail;

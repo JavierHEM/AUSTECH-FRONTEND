@@ -5,369 +5,229 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import {
   Box,
-  Grid,
-  TextField,
   Button,
-  Card,
-  CardContent,
-  Typography,
-  CircularProgress,
-  Alert,
-  Divider,
+  TextField,
+  MenuItem,
+  Grid,
   FormControl,
   InputLabel,
   Select,
-  MenuItem,
   FormHelperText,
-  FormControlLabel,
+  CircularProgress,
+  Alert,
+  Divider,
+  Typography,
+  Paper,
   Switch,
-  Autocomplete
+  FormControlLabel,
+  Tooltip
 } from '@mui/material';
 import { 
-  Save as SaveIcon, 
-  Cancel as CancelIcon 
+  InfoOutlined as InfoIcon,
+  Business as BusinessIcon, 
+  StorefrontOutlined as SucursalIcon 
 } from '@mui/icons-material';
+import catalogoService from '../../services/catalogoService';
 import clienteService from '../../services/clienteService';
 import sucursalService from '../../services/sucursalService';
-import catalogoService from '../../services/catalogoService';
 
-// Esquema de validación para formulario de sierra
-const sierraSchema = yup.object().shape({
-  codigo_barra: yup
-    .string()
-    .required('El código de barra es requerido')
-    .min(3, 'El código debe tener al menos 3 caracteres')
-    .max(50, 'El código no debe exceder los 50 caracteres'),
-  tipo_sierra_id: yup
-    .number()
-    .required('El tipo de sierra es requerido')
-    .typeError('Debe seleccionar un tipo de sierra'),
-  estado_id: yup
-    .number()
-    .required('El estado de sierra es requerido')
-    .typeError('Debe seleccionar un estado'),
-  sucursal_id: yup
-    .number()
-    .required('La sucursal es requerida')
-    .typeError('Debe seleccionar una sucursal'),
-  ancho: yup
-    .number()
-    .nullable()
-    .transform((value) => (isNaN(value) ? null : value))
-    .typeError('El ancho debe ser un número'),
-  largo: yup
-    .number()
-    .nullable()
-    .transform((value) => (isNaN(value) ? null : value))
-    .typeError('El largo debe ser un número'),
-  alto: yup
-    .number()
-    .nullable()
-    .transform((value) => (isNaN(value) ? null : value))
-    .typeError('El alto debe ser un número'),
-  material: yup
-    .string()
-    .nullable(),
-  observaciones: yup
-    .string()
-    .nullable()
-    .max(500, 'Las observaciones no deben exceder los 500 caracteres'),
-  activo: yup
-    .boolean()
+// Esquema de validación
+const validationSchema = yup.object().shape({
+  codigo_barra: yup.string().required('El código es requerido'),
+  tipo_sierra_id: yup.number().required('El tipo de sierra es requerido'),
+  estado_id: yup.number().required('El estado es requerido'),
+  sucursal_id: yup.number().required('La sucursal es requerida'),
+  activo: yup.boolean(),
+  ancho: yup.number().positive('El ancho debe ser un valor positivo').nullable().transform(value => (isNaN(value) ? null : value)),
+  largo: yup.number().positive('El largo debe ser un valor positivo').nullable().transform(value => (isNaN(value) ? null : value)),
+  alto: yup.number().positive('El alto debe ser un valor positivo').nullable().transform(value => (isNaN(value) ? null : value)),
+  observaciones: yup.string().nullable()
 });
 
-const SierraForm = ({ sierra, onSubmit, onCancel, loading, error, sucursalPreseleccionada, clientePreseleccionado }) => {
-  const [success, setSuccess] = useState(false);
-  const [clientes, setClientes] = useState([]);
-  const [sucursales, setSucursales] = useState([]);
+const SierraForm = ({ 
+  sierra = null, 
+  onSubmit, 
+  onCancel, 
+  loading, 
+  error, 
+  clientePreseleccionado = null,
+  sucursalPreseleccionada = null,
+  disableClienteSucursal = false,
+  clienteInfo = null,
+  sucursalInfo = null
+}) => {
   const [tiposSierra, setTiposSierra] = useState([]);
   const [estadosSierra, setEstadosSierra] = useState([]);
-  const [loadingCatalogos, setLoadingCatalogos] = useState(false);
-  const [selectedCliente, setSelectedCliente] = useState(null);
+  const [clientes, setClientes] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
+  const [selectedCliente, setSelectedCliente] = useState(clientePreseleccionado || (sierra?.sucursales?.cliente_id) || '');
+  const [loadingCatalogos, setLoadingCatalogos] = useState(true);
 
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-    reset,
-    setValue,
-    watch
-  } = useForm({
-    resolver: yupResolver(sierraSchema),
-    defaultValues: sierra ? {
-      codigo_barra: sierra.codigo_barra || '',
-      tipo_sierra_id: sierra.tipo_sierra_id || '',
-      estado_id: sierra.estado_id || '',
-      sucursal_id: sierra.sucursal_id || '',
-      ancho: sierra.ancho || '',
-      largo: sierra.largo || '',
-      alto: sierra.alto || '',
-      material: sierra.material || '',
-      observaciones: sierra.observaciones || '',
-      activo: sierra.activo !== undefined ? sierra.activo : true
-    } : {
-      codigo_barra: '',
-      tipo_sierra_id: '',
-      estado_id: '',
-      sucursal_id: sucursalPreseleccionada || '',
-      ancho: '',
-      largo: '',
-      alto: '',
-      material: '',
-      observaciones: '',
-      activo: true
+  // Configuración del formulario con valores por defecto
+  const { control, handleSubmit, setValue, watch, formState: { errors } } = useForm({
+    resolver: yupResolver(validationSchema),
+    defaultValues: {
+      codigo_barra: sierra?.codigo_barra || '',
+      tipo_sierra_id: sierra?.tipo_sierra_id || '',
+      estado_id: sierra?.estado_id || '',
+      sucursal_id: sierra?.sucursal_id || sucursalPreseleccionada || '',
+      activo: sierra ? sierra.activo : true,
+      ancho: sierra?.ancho || '',
+      largo: sierra?.largo || '',
+      alto: sierra?.alto || '',
+      material: sierra?.material || '',
+      observaciones: sierra?.observaciones || ''
     }
   });
 
-  const watchSucursalId = watch('sucursal_id');
+  // Observar el valor de sucursal seleccionada
+  const selectedSucursal = watch('sucursal_id');
 
-  // Cargar catálogos
+  // Cargar catálogos y listas al iniciar
   useEffect(() => {
-    const fetchCatalogos = async () => {
+    const loadCatalogos = async () => {
       setLoadingCatalogos(true);
       try {
-        // Cargar clientes
-        const clientesResponse = await clienteService.getAllClientes();
-        if (clientesResponse.success) {
-          setClientes(clientesResponse.data);
-        }
-        
         // Cargar tipos de sierra
         const tiposSierraResponse = await catalogoService.getTiposSierra();
         if (tiposSierraResponse.success) {
           setTiposSierra(tiposSierraResponse.data);
         }
-        
+
         // Cargar estados de sierra
         const estadosSierraResponse = await catalogoService.getEstadosSierra();
         if (estadosSierraResponse.success) {
           setEstadosSierra(estadosSierraResponse.data);
         }
-      } catch (error) {
-        console.error('Error al cargar catálogos:', error);
+
+        // Cargar clientes solo si no está en modo de edición o hay un cliente preseleccionado
+        if (!disableClienteSucursal) {
+          const clientesResponse = await clienteService.getAllClientes();
+          if (clientesResponse.success) {
+            setClientes(clientesResponse.data);
+          }
+        }
+
+        // Si hay un cliente seleccionado, cargar sus sucursales
+        if (selectedCliente) {
+          loadSucursalesByCliente(selectedCliente);
+        }
+        
+      } catch (err) {
+        console.error('Error al cargar catálogos:', err);
       } finally {
         setLoadingCatalogos(false);
       }
     };
 
-    fetchCatalogos();
-  }, []);
+    loadCatalogos();
+  }, [disableClienteSucursal]);
 
-  // Si hay un cliente preseleccionado, establecerlo
+  // Cargar sucursales cuando cambia el cliente seleccionado
   useEffect(() => {
-    if (clientePreseleccionado) {
-      setSelectedCliente(clientePreseleccionado);
-      
-      // Cargar las sucursales para este cliente
-      const fetchSucursales = async () => {
-        try {
-          const response = await sucursalService.getSucursalesByCliente(clientePreseleccionado);
-          if (response.success) {
-            setSucursales(response.data);
-            
-            // Si solo hay una sucursal, seleccionarla automáticamente
-            if (response.data.length === 1 && !sierra) {
-              setValue('sucursal_id', response.data[0].id);
-            }
-          }
-        } catch (error) {
-          console.error('Error al cargar sucursales:', error);
-        }
-      };
-      
-      fetchSucursales();
+    if (selectedCliente && !disableClienteSucursal) {
+      loadSucursalesByCliente(selectedCliente);
     }
-  }, [clientePreseleccionado, setValue, sierra]);
+  }, [selectedCliente, disableClienteSucursal]);
 
-  // Si hay una sierra existente, obtener su cliente y sucursales
-  useEffect(() => {
-    if (sierra && sierra.sucursal_id) {
-      const fetchSucursalData = async () => {
-        try {
-          const response = await sucursalService.getSucursalById(sierra.sucursal_id);
-          if (response.success && response.data) {
-            // Establecer el cliente seleccionado
-            setSelectedCliente(response.data.cliente_id);
-            
-            // Cargar todas las sucursales de este cliente
-            const sucursalesResponse = await sucursalService.getSucursalesByCliente(response.data.cliente_id);
-            if (sucursalesResponse.success) {
-              setSucursales(sucursalesResponse.data);
-            }
-          }
-        } catch (error) {
-          console.error('Error al cargar datos de la sucursal:', error);
+  // Función para cargar sucursales por cliente
+  const loadSucursalesByCliente = async (clienteId) => {
+    try {
+      const response = await sucursalService.getSucursalesByCliente(clienteId);
+      if (response.success) {
+        setSucursales(response.data);
+        
+        // Si hay una sola sucursal y no hay una preseleccionada, seleccionarla automáticamente
+        if (response.data.length === 1 && !selectedSucursal && !sucursalPreseleccionada) {
+          setValue('sucursal_id', response.data[0].id);
         }
-      };
-      
-      fetchSucursalData();
-    }
-  }, [sierra]);
-
-  // Cuando cambia el cliente seleccionado, cargar sus sucursales
-  useEffect(() => {
-    const fetchSucursales = async () => {
-      if (selectedCliente) {
-        try {
-          const response = await sucursalService.getSucursalesByCliente(selectedCliente);
-          if (response.success) {
-            setSucursales(response.data);
-            
-            // Limpiar el campo de sucursal si el cliente cambia
-            if (!sucursalPreseleccionada) {
-              setValue('sucursal_id', '');
-            }
-          }
-        } catch (error) {
-          console.error('Error al cargar sucursales:', error);
-        }
-      } else {
-        setSucursales([]);
-        setValue('sucursal_id', '');
       }
-    };
-
-    fetchSucursales();
-  }, [selectedCliente, setValue, sucursalPreseleccionada]);
-
-  const handleFormSubmit = async (data) => {
-    setSuccess(false);
-    const result = await onSubmit(data);
-    if (result && result.success) {
-      setSuccess(true);
-      if (!sierra) {
-        reset();
-      }
+    } catch (err) {
+      console.error('Error al cargar sucursales por cliente:', err);
     }
   };
 
-  // Encontrar la sucursal seleccionada
-  const sucursalSeleccionada = sucursales.find(s => s.id === parseInt(watchSucursalId));
-  
-  // Si cambia la sucursal, actualizar el cliente seleccionado
-  useEffect(() => {
-    if (sucursalSeleccionada && sucursalSeleccionada.cliente_id !== selectedCliente) {
-      setSelectedCliente(sucursalSeleccionada.cliente_id);
-    }
-  }, [sucursalSeleccionada, selectedCliente]);
+  // Manejar cambio de cliente
+  const handleClienteChange = (event) => {
+    const clienteId = event.target.value;
+    setSelectedCliente(clienteId);
+    setValue('sucursal_id', ''); // Resetear la sucursal seleccionada
+  };
+
+  // Función para enviar el formulario
+  const onFormSubmit = async (data) => {
+    const result = await onSubmit(data);
+    return result;
+  };
 
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit)}>
-      <Card>
-        <CardContent>
-          <Typography variant="h6" component="div" sx={{ mb: 2 }}>
-            {sierra ? 'Editar Sierra' : 'Nueva Sierra'}
-          </Typography>
+    <Box component="form" onSubmit={handleSubmit(onFormSubmit)}>
+      {/* Sección de información de cliente y sucursal */}
+      {disableClienteSucursal ? (
+        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+          <Box display="flex" alignItems="center" mb={2}>
+            <InfoIcon color="info" sx={{ mr: 1 }} />
+            <Typography>
+              El cliente y la sucursal no pueden ser modificados después de crear la sierra.
+            </Typography>
+          </Box>
           
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          
-          {success && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Sierra {sierra ? 'actualizada' : 'creada'} correctamente
-            </Alert>
-          )}
-          
-          <Grid container spacing={3}>
-            {/* Código de barra */}
+          <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
-              <Controller
-                name="codigo_barra"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Código de Barra"
-                    error={!!errors.codigo_barra}
-                    helperText={errors.codigo_barra?.message}
-                    required
-                  />
-                )}
-              />
-            </Grid>
-            
-            {/* Tipo de sierra */}
-            <Grid item xs={12} md={6}>
-              <Controller
-                name="tipo_sierra_id"
-                control={control}
-                render={({ field }) => (
-                  <FormControl fullWidth error={!!errors.tipo_sierra_id}>
-                    <InputLabel id="tipo-sierra-label" required>Tipo de Sierra</InputLabel>
-                    <Select
-                      {...field}
-                      labelId="tipo-sierra-label"
-                      label="Tipo de Sierra"
-                      value={field.value || ''}
-                      disabled={loadingCatalogos}
-                    >
-                      <MenuItem value="">
-                        <em>Seleccione un tipo</em>
-                      </MenuItem>
-                      {tiposSierra.map((tipo) => (
-                        <MenuItem key={tipo.id} value={tipo.id}>
-                          {tipo.nombre}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                    {errors.tipo_sierra_id && (
-                      <FormHelperText>{errors.tipo_sierra_id.message}</FormHelperText>
-                    )}
-                  </FormControl>
-                )}
-              />
-            </Grid>
-            
-            {/* Cliente (para seleccionar sucursal) */}
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth disabled={sucursalPreseleccionada || (sierra && sierra.sucursal_id)}>
+              <FormControl fullWidth disabled variant="filled">
                 <InputLabel id="cliente-label">Cliente</InputLabel>
                 <Select
                   labelId="cliente-label"
                   value={selectedCliente || ''}
-                  onChange={(e) => setSelectedCliente(e.target.value)}
                   label="Cliente"
-                  disabled={loadingCatalogos || sucursalPreseleccionada || (sierra && sierra.sucursal_id)}
+                  startAdornment={
+                    <BusinessIcon color="action" sx={{ mr: 1, opacity: 0.6 }} />
+                  }
                 >
-                  <MenuItem value="">
-                    <em>Seleccione un cliente</em>
-                  </MenuItem>
-                  {clientes.map((cliente) => (
-                    <MenuItem key={cliente.id} value={cliente.id}>
-                      {cliente.razon_social}
+                  {clienteInfo ? (
+                    <MenuItem value={clienteInfo.id}>
+                      {clienteInfo.razon_social}
                     </MenuItem>
-                  ))}
+                  ) : sierra?.sucursales?.clientes ? (
+                    <MenuItem value={sierra.sucursales.clientes.id}>
+                      {sierra.sucursales.clientes.razon_social}
+                    </MenuItem>
+                  ) : (
+                    <MenuItem value="">
+                      <em>Cliente no disponible</em>
+                    </MenuItem>
+                  )}
                 </Select>
               </FormControl>
             </Grid>
-            
-            {/* Sucursal */}
             <Grid item xs={12} md={6}>
               <Controller
                 name="sucursal_id"
                 control={control}
                 render={({ field }) => (
-                  <FormControl fullWidth error={!!errors.sucursal_id}>
-                    <InputLabel id="sucursal-label" required>Sucursal</InputLabel>
+                  <FormControl fullWidth disabled variant="filled" error={!!errors.sucursal_id}>
+                    <InputLabel id="sucursal-label">Sucursal</InputLabel>
                     <Select
                       {...field}
                       labelId="sucursal-label"
                       label="Sucursal"
-                      value={field.value || ''}
-                      disabled={loadingCatalogos || !selectedCliente || sucursalPreseleccionada}
+                      startAdornment={
+                        <SucursalIcon color="action" sx={{ mr: 1, opacity: 0.6 }} />
+                      }
                     >
-                      <MenuItem value="">
-                        <em>Seleccione una sucursal</em>
-                      </MenuItem>
-                      {sucursales.map((sucursal) => (
-                        <MenuItem key={sucursal.id} value={sucursal.id}>
-                          {sucursal.nombre}
+                      {sucursalInfo ? (
+                        <MenuItem value={sucursalInfo.id}>
+                          {sucursalInfo.nombre}
                         </MenuItem>
-                      ))}
+                      ) : sierra?.sucursales ? (
+                        <MenuItem value={sierra.sucursales.id}>
+                          {sierra.sucursales.nombre}
+                        </MenuItem>
+                      ) : (
+                        <MenuItem value="">
+                          <em>Sucursal no disponible</em>
+                        </MenuItem>
+                      )}
                     </Select>
                     {errors.sucursal_id && (
                       <FormHelperText>{errors.sucursal_id.message}</FormHelperText>
@@ -376,182 +236,294 @@ const SierraForm = ({ sierra, onSubmit, onCancel, loading, error, sucursalPresel
                 )}
               />
             </Grid>
-            
-            {/* Estado de sierra */}
-            <Grid item xs={12} md={6}>
-              <Controller
-                name="estado_id"
-                control={control}
-                render={({ field }) => (
-                  <FormControl fullWidth error={!!errors.estado_id}>
-                    <InputLabel id="estado-sierra-label" required>Estado de Sierra</InputLabel>
-                    <Select
-                      {...field}
-                      labelId="estado-sierra-label"
-                      label="Estado de Sierra"
-                      value={field.value || ''}
-                      disabled={loadingCatalogos}
-                    >
-                      <MenuItem value="">
-                        <em>Seleccione un estado</em>
-                      </MenuItem>
-                      {estadosSierra.map((estado) => (
-                        <MenuItem key={estado.id} value={estado.id}>
-                          {estado.nombre}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                    {errors.estado_id && (
-                      <FormHelperText>{errors.estado_id.message}</FormHelperText>
-                    )}
-                  </FormControl>
-                )}
-              />
-            </Grid>
-            
-            {/* Activo */}
-            <Grid item xs={12} md={6}>
-              <Controller
-                name="activo"
-                control={control}
-                render={({ field }) => (
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={field.value}
-                        onChange={(e) => field.onChange(e.target.checked)}
-                      />
-                    }
-                    label="Sierra Activa"
-                  />
-                )}
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom>
-                Especificaciones Técnicas
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-            </Grid>
-            
-            {/* Ancho */}
-            <Grid item xs={12} md={4}>
-              <Controller
-                name="ancho"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Ancho (mm)"
-                    type="number"
-                    error={!!errors.ancho}
-                    helperText={errors.ancho?.message}
-                  />
-                )}
-              />
-            </Grid>
-            
-            {/* Largo */}
-            <Grid item xs={12} md={4}>
-              <Controller
-                name="largo"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Largo (mm)"
-                    type="number"
-                    error={!!errors.largo}
-                    helperText={errors.largo?.message}
-                  />
-                )}
-              />
-            </Grid>
-            
-            {/* Alto */}
-            <Grid item xs={12} md={4}>
-              <Controller
-                name="alto"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Alto (mm)"
-                    type="number"
-                    error={!!errors.alto}
-                    helperText={errors.alto?.message}
-                  />
-                )}
-              />
-            </Grid>
-            
-            {/* Material */}
-            <Grid item xs={12} md={6}>
-              <Controller
-                name="material"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Material"
-                    error={!!errors.material}
-                    helperText={errors.material?.message}
-                  />
-                )}
-              />
-            </Grid>
-            
-            {/* Observaciones */}
-            <Grid item xs={12}>
-              <Controller
-                name="observaciones"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Observaciones"
-                    multiline
-                    rows={4}
-                    error={!!errors.observaciones}
-                    helperText={errors.observaciones?.message}
-                  />
-                )}
-              />
-            </Grid>
           </Grid>
-        </CardContent>
-        
-        <Divider />
-        
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 2 }}>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={onCancel}
-            startIcon={<CancelIcon />}
-            sx={{ mr: 1 }}
-          >
-            Cancelar
-          </Button>
-          
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <SaveIcon />}
-            disabled={loading}
-          >
-            {sierra ? 'Actualizar' : 'Guardar'}
-          </Button>
-        </Box>
-      </Card>
-    </form>
+        </Paper>
+      ) : (
+        <Grid container spacing={2} mb={3}>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth error={!!errors.sucursal_id} disabled={!!sucursalPreseleccionada}>
+              <InputLabel id="cliente-label">Cliente</InputLabel>
+              <Select
+                labelId="cliente-label"
+                value={selectedCliente || ''}
+                onChange={handleClienteChange}
+                label="Cliente"
+                disabled={!!clientePreseleccionado || loadingCatalogos}
+                startAdornment={
+                  <BusinessIcon color="action" sx={{ mr: 1 }} />
+                }
+              >
+                <MenuItem value="">
+                  <em>Seleccione un cliente</em>
+                </MenuItem>
+                {clientes.map((cliente) => (
+                  <MenuItem key={cliente.id} value={cliente.id}>
+                    {cliente.razon_social}
+                  </MenuItem>
+                ))}
+              </Select>
+              {!selectedCliente && (
+                <FormHelperText>Debe seleccionar un cliente primero</FormHelperText>
+              )}
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Controller
+              name="sucursal_id"
+              control={control}
+              render={({ field }) => (
+                <FormControl fullWidth error={!!errors.sucursal_id} disabled={!selectedCliente || !!sucursalPreseleccionada}>
+                  <InputLabel id="sucursal-label">Sucursal</InputLabel>
+                  <Select
+                    {...field}
+                    labelId="sucursal-label"
+                    label="Sucursal"
+                    startAdornment={
+                      <SucursalIcon color="action" sx={{ mr: 1 }} />
+                    }
+                  >
+                    <MenuItem value="">
+                      <em>Seleccione una sucursal</em>
+                    </MenuItem>
+                    {sucursales.map((sucursal) => (
+                      <MenuItem key={sucursal.id} value={sucursal.id}>
+                        {sucursal.nombre}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {errors.sucursal_id && (
+                    <FormHelperText>{errors.sucursal_id.message}</FormHelperText>
+                  )}
+                </FormControl>
+              )}
+            />
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Divider */}
+      <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
+        Información de la Sierra
+      </Typography>
+      <Divider sx={{ mb: 3 }} />
+
+      {/* Campos principales */}
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={4}>
+          <Controller
+            name="codigo_barra"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                label="Código de Sierra *"
+                fullWidth
+                error={!!errors.codigo_barra}
+                helperText={errors.codigo_barra?.message}
+              />
+            )}
+          />
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Controller
+            name="tipo_sierra_id"
+            control={control}
+            render={({ field }) => (
+              <FormControl fullWidth error={!!errors.tipo_sierra_id}>
+                <InputLabel id="tipo-sierra-label">Tipo de Sierra *</InputLabel>
+                <Select
+                  {...field}
+                  labelId="tipo-sierra-label"
+                  label="Tipo de Sierra *"
+                >
+                  <MenuItem value="">
+                    <em>Seleccione un tipo</em>
+                  </MenuItem>
+                  {tiposSierra.map((tipo) => (
+                    <MenuItem key={tipo.id} value={tipo.id}>
+                      {tipo.nombre}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {errors.tipo_sierra_id && (
+                  <FormHelperText>{errors.tipo_sierra_id.message}</FormHelperText>
+                )}
+              </FormControl>
+            )}
+          />
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Controller
+            name="estado_id"
+            control={control}
+            render={({ field }) => (
+              <FormControl fullWidth error={!!errors.estado_id}>
+                <InputLabel id="estado-sierra-label">Estado de Sierra *</InputLabel>
+                <Select
+                  {...field}
+                  labelId="estado-sierra-label"
+                  label="Estado de Sierra *"
+                >
+                  <MenuItem value="">
+                    <em>Seleccione un estado</em>
+                  </MenuItem>
+                  {estadosSierra.map((estado) => (
+                    <MenuItem key={estado.id} value={estado.id}>
+                      {estado.nombre}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {errors.estado_id && (
+                  <FormHelperText>{errors.estado_id.message}</FormHelperText>
+                )}
+              </FormControl>
+            )}
+          />
+        </Grid>
+      </Grid>
+
+      {/* Especificaciones técnicas */}
+      <Typography variant="subtitle1" fontWeight="medium" sx={{ mt: 3, mb: 1 }}>
+        Especificaciones Técnicas
+      </Typography>
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={3}>
+          <Controller
+            name="ancho"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                label="Ancho (mm)"
+                type="number"
+                fullWidth
+                error={!!errors.ancho}
+                helperText={errors.ancho?.message}
+                InputProps={{ inputProps: { min: 0 } }}
+              />
+            )}
+          />
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Controller
+            name="largo"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                label="Largo (mm)"
+                type="number"
+                fullWidth
+                error={!!errors.largo}
+                helperText={errors.largo?.message}
+                InputProps={{ inputProps: { min: 0 } }}
+              />
+            )}
+          />
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Controller
+            name="alto"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                label="Alto (mm)"
+                type="number"
+                fullWidth
+                error={!!errors.alto}
+                helperText={errors.alto?.message}
+                InputProps={{ inputProps: { min: 0 } }}
+              />
+            )}
+          />
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Controller
+            name="material"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                label="Material"
+                fullWidth
+              />
+            )}
+          />
+        </Grid>
+      </Grid>
+
+      {/* Observaciones */}
+      <Grid container spacing={2} sx={{ mt: 1 }}>
+        <Grid item xs={12}>
+          <Controller
+            name="observaciones"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                label="Observaciones"
+                fullWidth
+                multiline
+                rows={3}
+              />
+            )}
+          />
+        </Grid>
+      </Grid>
+
+      {/* Estado activo/inactivo */}
+      <Box sx={{ mt: 2 }}>
+        <Controller
+          name="activo"
+          control={control}
+          render={({ field: { value, onChange } }) => (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={value}
+                  onChange={(e) => onChange(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label={
+                <Box display="flex" alignItems="center">
+                  <Typography>
+                    {value ? 'Sierra Activa' : 'Sierra Inactiva'}
+                  </Typography>
+                  <Tooltip title="Una sierra inactiva no puede registrar nuevos afilados">
+                    <InfoIcon fontSize="small" color="action" sx={{ ml: 1 }} />
+                  </Tooltip>
+                </Box>
+              }
+            />
+          )}
+        />
+      </Box>
+
+      {/* Mensaje de error */}
+      {error && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {/* Botones de acción */}
+      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+        <Button onClick={onCancel} sx={{ mr: 1 }}>
+          Cancelar
+        </Button>
+        <Button
+          type="submit"
+          variant="contained"
+          color="primary"
+          disabled={loading}
+          startIcon={loading && <CircularProgress size={20} color="inherit" />}
+        >
+          {sierra ? 'Actualizar Sierra' : 'Registrar Sierra'}
+        </Button>
+      </Box>
+    </Box>
   );
 };
 

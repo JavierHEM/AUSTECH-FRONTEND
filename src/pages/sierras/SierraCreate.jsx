@@ -7,7 +7,8 @@ import {
   Button,
   Breadcrumbs,
   Link as MuiLink,
-  Alert
+  Alert,
+  Snackbar
 } from '@mui/material';
 import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import SierraForm from '../../components/forms/SierraForm';
@@ -18,6 +19,7 @@ const SierraCreate = () => {
   const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [formData, setFormData] = useState(null); // Para depuración
 
   // Verificar si hay cliente/sucursal preseleccionados (pasados a través de location.state)
   const clientePreseleccionado = location.state?.clienteId || null;
@@ -28,11 +30,39 @@ const SierraCreate = () => {
   const handleSubmit = async (data) => {
     setLoading(true);
     setError(null);
+    setFormData(data); // Guardar datos para depuración
+    
+    // Verificar que los campos obligatorios estén presentes
+    if (!data.codigo_barra || data.codigo_barra.trim() === '') {
+      setError('El código de la sierra es requerido');
+      setLoading(false);
+      return { success: false };
+    }
+    
+    if (!data.tipo_sierra_id) {
+      setError('Debe seleccionar un tipo de sierra');
+      setLoading(false);
+      return { success: false };
+    }
+    
+    if (!data.estado_id) {
+      setError('Debe seleccionar un estado de sierra');
+      setLoading(false);
+      return { success: false };
+    }
+    
+    if (!data.sucursal_id) {
+      setError('Debe seleccionar una sucursal');
+      setLoading(false);
+      return { success: false };
+    }
     
     try {
+      console.log('Enviando datos de sierra:', data);
       const response = await sierraService.createSierra(data);
       
       if (response.success) {
+        console.log('Sierra creada exitosamente:', response.data);
         // Opcionalmente esperar un poco para mostrar mensaje de éxito
         setTimeout(() => {
           navigate(`/sierras/${response.data.id}`, { 
@@ -41,6 +71,7 @@ const SierraCreate = () => {
         }, 1500);
         return { success: true };
       } else {
+        console.error('Error desde el servicio:', response.error);
         setError(response.error || 'Error al crear la sierra');
         return { success: false };
       }
@@ -127,6 +158,14 @@ const SierraCreate = () => {
             : ` el cliente ${clienteNombre || 'seleccionado'}`
           }. 
           {sucursalPreseleccionada && ' La sucursal ya está seleccionada en el formulario.'}
+        </Alert>
+      )}
+
+      {/* Para depuración - mostrar datos del formulario si hay un error */}
+      {error && formData && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          <Typography variant="subtitle2">Datos del formulario para depuración:</Typography>
+          <pre>{JSON.stringify(formData, null, 2)}</pre>
         </Alert>
       )}
 

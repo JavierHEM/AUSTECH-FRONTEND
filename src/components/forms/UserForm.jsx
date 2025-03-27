@@ -5,511 +5,584 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import {
   Box,
-  Grid,
-  TextField,
-  Button,
   Card,
   CardContent,
-  Typography,
-  CircularProgress,
-  Alert,
-  Divider,
+  Grid,
+  TextField,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
+  Button,
+  Divider,
   FormHelperText,
   InputAdornment,
   IconButton,
-  Switch,
-  FormControlLabel,
-  Checkbox,
-  ListItemText,
+  Alert,
+  CircularProgress,
+  Typography,
+  Autocomplete,
   Chip
 } from '@mui/material';
-import { 
-  Save as SaveIcon, 
+import {
+  Save as SaveIcon,
   Cancel as CancelIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
+  Email as EmailIcon,
+  Person as PersonIcon,
+  Security as SecurityIcon,
+  Business as BusinessIcon,
+  LocationOn as LocationIcon
 } from '@mui/icons-material';
+import { useAuth } from '../../context/AuthContext';
 import catalogoService from '../../services/catalogoService';
-import sucursalService from '../../services/sucursalService';
 import clienteService from '../../services/clienteService';
 
-// Esquema de validación para formulario de usuario
+// Esquema de validación
 const createUserSchema = yup.object().shape({
   nombre: yup
     .string()
-    .required('El nombre es requerido')
-    .min(3, 'El nombre debe tener al menos 3 caracteres')
-    .max(100, 'El nombre no debe exceder los 100 caracteres'),
+    .required('El nombre es requerido'),
+  apellido: yup
+    .string()
+    .required('El apellido es requerido'),
   email: yup
     .string()
-    .required('El email es requerido')
-    .email('Ingrese un email válido'),
+    .email('Ingrese un email válido')
+    .required('El email es requerido'),
   password: yup
     .string()
     .required('La contraseña es requerida')
     .min(6, 'La contraseña debe tener al menos 6 caracteres'),
   password_confirmation: yup
     .string()
-    .oneOf([yup.ref('password'), null], 'Las contraseñas deben coincidir')
+    .oneOf([yup.ref('password')], 'Las contraseñas deben coincidir')
     .required('La confirmación de contraseña es requerida'),
-  rol: yup
-    .string()
+  rol_id: yup
+    .number()
     .required('El rol es requerido'),
   cliente_id: yup
     .number()
     .nullable()
-    .when('rol', {
-      is: 'Cliente',
-      then: () => yup.number().required('El cliente es requerido').typeError('Debe seleccionar un cliente'),
-      otherwise: () => yup.number().nullable()
+    .when('rol_id', {
+      is: (value) => value === 3, // ID del rol 'Cliente'
+      then: yup.number().required('El cliente es requerido para usuarios tipo Cliente')
     }),
   sucursales: yup
     .array()
-    .when('rol', {
-      is: 'Cliente',
-      then: () => yup.array().min(1, 'Debe seleccionar al menos una sucursal'),
-      otherwise: () => yup.array()
-    }),
-  activo: yup
-    .boolean()
+    .when('rol_id', {
+      is: (value) => value === 3, // ID del rol 'Cliente'
+      then: yup.array().min(1, 'Seleccione al menos una sucursal')
+    })
 });
 
-// Esquema para editar usuario (sin contraseña requerida)
+// Esquema para edición (contraseña opcional)
 const editUserSchema = yup.object().shape({
   nombre: yup
     .string()
-    .required('El nombre es requerido')
-    .min(3, 'El nombre debe tener al menos 3 caracteres')
-    .max(100, 'El nombre no debe exceder los 100 caracteres'),
+    .required('El nombre es requerido'),
+  apellido: yup
+    .string()
+    .required('El apellido es requerido'),
   email: yup
     .string()
-    .required('El email es requerido')
-    .email('Ingrese un email válido'),
+    .email('Ingrese un email válido')
+    .required('El email es requerido'),
   password: yup
     .string()
     .nullable()
+    .transform(value => value || null)
     .min(6, 'La contraseña debe tener al menos 6 caracteres'),
   password_confirmation: yup
     .string()
-    .oneOf([yup.ref('password'), null], 'Las contraseñas deben coincidir'),
-  rol: yup
-    .string()
+    .nullable()
+    .transform(value => value || null)
+    .oneOf([yup.ref('password')], 'Las contraseñas deben coincidir'),
+  rol_id: yup
+    .number()
     .required('El rol es requerido'),
   cliente_id: yup
     .number()
     .nullable()
-    .when('rol', {
-      is: 'Cliente',
-      then: () => yup.number().required('El cliente es requerido').typeError('Debe seleccionar un cliente'),
-      otherwise: () => yup.number().nullable()
+    .when('rol_id', {
+      is: (value) => value === 3, // ID del rol 'Cliente'
+      then: yup.number().required('El cliente es requerido para usuarios tipo Cliente')
     }),
   sucursales: yup
     .array()
-    .when('rol', {
-      is: 'Cliente',
-      then: () => yup.array().min(1, 'Debe seleccionar al menos una sucursal'),
-      otherwise: () => yup.array()
-    }),
-  activo: yup
-    .boolean()
+    .when('rol_id', {
+      is: (value) => value === 3, // ID del rol 'Cliente'
+      then: yup.array().min(1, 'Seleccione al menos una sucursal')
+    })
 });
 
-const UserForm = ({ user, onSubmit, onCancel, loading, error }) => {
-  const [success, setSuccess] = useState(false);
+const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = null, isSelfAccount = false }) => {
+  const { user: currentUser } = useAuth();
+  const isEdit = !!user;
+  
   const [roles, setRoles] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [sucursales, setSucursales] = useState([]);
-  const [loadingCatalogos, setLoadingCatalogos] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
-  const [selectedCliente, setSelectedCliente] = useState(null);
-  
-  // Elegir el esquema de validación según si es creación o edición
-  const schema = user ? editUserSchema : createUserSchema;
+  const [selectedRol, setSelectedRol] = useState(user?.rol_id || null);
+  const [selectedCliente, setSelectedCliente] = useState(user?.cliente_id || null);
+  const [showPassword, setShowPassword] = useState({
+    password: false,
+    confirmation: false
+  });
+  const [loadingData, setLoadingData] = useState(true);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+
+  // Usar esquema de validación apropiado según si es creación o edición
+  const validationSchema = isEdit ? editUserSchema : createUserSchema;
 
   const {
-    control,
+    register,
     handleSubmit,
-    formState: { errors },
-    reset,
+    control,
     setValue,
+    formState: { errors },
     watch
   } = useForm({
-    resolver: yupResolver(schema),
-    defaultValues: user ? {
-      nombre: user.nombre || '',
-      email: user.email || '',
+    resolver: yupResolver(validationSchema),
+    defaultValues: {
+      nombre: user?.nombre || '',
+      apellido: user?.apellido || '',
+      email: user?.email || '',
       password: '',
       password_confirmation: '',
-      rol: user.rol || '',
-      cliente_id: user.cliente_id || null,
-      sucursales: user.sucursales || [],
-      activo: user.activo !== undefined ? user.activo : true
-    } : {
-      nombre: '',
-      email: '',
-      password: '',
-      password_confirmation: '',
-      rol: '',
-      cliente_id: null,
-      sucursales: [],
-      activo: true
+      rol_id: user?.rol_id ? parseInt(user.rol_id, 10) : '',
+      cliente_id: user?.cliente_id || null,
+      sucursales: user?.sucursales || []
     }
   });
 
-  const watchRol = watch('rol');
+  // Observar cambios en el rol seleccionado
+  const watchRolId = watch('rol_id');
   const watchClienteId = watch('cliente_id');
+  const isClienteRol = watchRolId === 3; // ID del rol 'Cliente'
 
-  // Cargar catálogos
+  // Cargar datos necesarios
   useEffect(() => {
-    const fetchCatalogos = async () => {
-      setLoadingCatalogos(true);
+    const loadFormData = async () => {
+      setLoadingData(true);
       try {
         // Cargar roles
         const rolesResponse = await catalogoService.getRoles();
         if (rolesResponse.success) {
           setRoles(rolesResponse.data);
+        } else {
+          console.error('Error al cargar roles:', rolesResponse.error);
         }
-        
+
         // Cargar clientes
         const clientesResponse = await clienteService.getAllClientes();
         if (clientesResponse.success) {
           setClientes(clientesResponse.data);
+        } else {
+          console.error('Error al cargar clientes:', clientesResponse.error);
         }
-      } catch (error) {
-        console.error('Error al cargar catálogos:', error);
+
+        // Si estamos editando y hay un cliente seleccionado, cargar sus sucursales
+        if (isEdit && user.cliente_id) {
+          loadSucursalesByCliente(user.cliente_id);
+        }
+      } catch (err) {
+        console.error('Error al cargar datos del formulario:', err);
       } finally {
-        setLoadingCatalogos(false);
+        setLoadingData(false);
       }
     };
 
-    fetchCatalogos();
-  }, []);
+    loadFormData();
+  }, [isEdit, user]);
 
-  // Actualizar selectedCliente cuando cambia cliente_id
+  // Cargar sucursales cuando cambia el cliente seleccionado
   useEffect(() => {
     if (watchClienteId) {
-      setSelectedCliente(watchClienteId);
+      loadSucursalesByCliente(watchClienteId);
     } else {
-      setSelectedCliente(null);
+      setSucursales([]);
     }
   }, [watchClienteId]);
 
-  // Cargar sucursales cuando se selecciona un cliente
-  useEffect(() => {
-    const fetchSucursales = async () => {
-      if (selectedCliente) {
-        try {
-          const response = await sucursalService.getSucursalesByCliente(selectedCliente);
-          if (response.success) {
-            setSucursales(response.data);
-          }
-        } catch (error) {
-          console.error('Error al cargar sucursales:', error);
-        }
+  // Función para cargar sucursales por cliente
+  const loadSucursalesByCliente = async (clienteId) => {
+    try {
+      const response = await clienteService.getSucursalesByCliente(clienteId);
+      if (response.success) {
+        setSucursales(response.data);
       } else {
+        console.error('Error al cargar sucursales:', response.error);
         setSucursales([]);
       }
-    };
-
-    fetchSucursales();
-  }, [selectedCliente]);
-
-  // Limpiar campos cliente y sucursales si el rol no es Cliente
-  useEffect(() => {
-    if (watchRol !== 'Cliente') {
-      setValue('cliente_id', null);
-      setValue('sucursales', []);
-    }
-  }, [watchRol, setValue]);
-
-  const handleFormSubmit = async (data) => {
-    setSuccess(false);
-    const result = await onSubmit(data);
-    if (result && result.success) {
-      setSuccess(true);
-      if (!user) {
-        reset();
-      }
+    } catch (err) {
+      console.error('Error al cargar sucursales:', err);
+      setSucursales([]);
     }
   };
 
+  // Manejar cambio de rol
+  const handleRolChange = (event) => {
+    const rolId = parseInt(event.target.value, 10);
+    setSelectedRol(rolId);
+    setValue('rol_id', rolId);
+    
+    // Limpiar campos de cliente y sucursales si no es rol de Cliente
+    if (rolId !== 3) {
+      setValue('cliente_id', null);
+      setValue('sucursales', []);
+    }
+  };
+
+  // Manejar cambio de cliente
+  const handleClienteChange = (event) => {
+    const clienteId = event.target.value;
+    setSelectedCliente(clienteId);
+    setValue('cliente_id', clienteId);
+    setValue('sucursales', []); // Limpiar sucursales al cambiar de cliente
+  };
+
+  // Alternar visibilidad de contraseña
+  const handleTogglePassword = (field) => {
+    setShowPassword({
+      ...showPassword,
+      [field]: !showPassword[field]
+    });
+  };
+
+  // Manejar envío del formulario
+  const onFormSubmit = async (data) => {
+    setFormSubmitting(true);
+    
+    // Asegurarse de que rol_id sea un número
+    if (data.rol_id) {
+      data.rol_id = parseInt(data.rol_id, 10);
+    }
+    
+    // Eliminar campos innecesarios según el rol
+    if (data.rol_id !== 3) {
+      delete data.cliente_id;
+      delete data.sucursales;
+    }
+    
+    // Si editamos y no hay contraseña, eliminar campos relacionados
+    if (isEdit && !data.password) {
+      delete data.password;
+      delete data.password_confirmation;
+    }
+    
+    console.log('Datos que se envían al servidor:', data);
+    
+    try {
+      const result = await onSubmit(data);
+      if (!result?.success) {
+        setFormSubmitting(false);
+      }
+    } catch (err) {
+      console.error('Error al enviar formulario:', err);
+      setFormSubmitting(false);
+    }
+  };
+
+  if (loadingData) {
+    return (
+      <Box display="flex" justifyContent="center" p={4}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit)}>
-      <Card>
-        <CardContent>
-          <Typography variant="h6" component="div" sx={{ mb: 2 }}>
-            {user ? 'Editar Usuario' : 'Nuevo Usuario'}
-          </Typography>
-          
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          
-          {success && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Usuario {user ? 'actualizado' : 'creado'} correctamente
-            </Alert>
-          )}
-          
+    <Card>
+      <CardContent>
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+
+        <form onSubmit={handleSubmit(onFormSubmit)}>
           <Grid container spacing={3}>
+            {/* Información básica */}
+            <Grid item xs={12}>
+              <Typography variant="h6" fontWeight="medium" gutterBottom>
+                Información básica
+              </Typography>
+            </Grid>
+
             {/* Nombre */}
             <Grid item xs={12} md={6}>
-              <Controller
-                name="nombre"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Nombre Completo"
-                    error={!!errors.nombre}
-                    helperText={errors.nombre?.message}
-                    required
-                  />
-                )}
+              <TextField
+                fullWidth
+                label="Nombre"
+                variant="outlined"
+                {...register('nombre')}
+                error={!!errors.nombre}
+                helperText={errors.nombre?.message}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PersonIcon color="action" />
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
-            
-            {/* Email */}
+
+            {/* Apellido */}
             <Grid item xs={12} md={6}>
-              <Controller
-                name="email"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Email"
-                    type="email"
-                    error={!!errors.email}
-                    helperText={errors.email?.message}
-                    required
-                  />
-                )}
+              <TextField
+                fullWidth
+                label="Apellido"
+                variant="outlined"
+                {...register('apellido')}
+                error={!!errors.apellido}
+                helperText={errors.apellido?.message}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PersonIcon color="action" />
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
-            
+
+            {/* Email */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Email"
+                variant="outlined"
+                type="email"
+                {...register('email')}
+                error={!!errors.email}
+                helperText={errors.email?.message}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EmailIcon color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+
             {/* Contraseña */}
             <Grid item xs={12} md={6}>
-              <Controller
-                name="password"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label={user ? 'Nueva Contraseña (opcional)' : 'Contraseña'}
-                    type={showPassword ? 'text' : 'password'}
-                    error={!!errors.password}
-                    helperText={errors.password?.message}
-                    required={!user}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            onClick={() => setShowPassword(!showPassword)}
-                            edge="end"
-                          >
-                            {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                )}
-              />
-            </Grid>
-            
-            {/* Confirmación de contraseña */}
-            <Grid item xs={12} md={6}>
-              <Controller
-                name="password_confirmation"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Confirmar Contraseña"
-                    type={showPasswordConfirmation ? 'text' : 'password'}
-                    error={!!errors.password_confirmation}
-                    helperText={errors.password_confirmation?.message}
-                    required={!user}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            onClick={() => setShowPasswordConfirmation(!showPasswordConfirmation)}
-                            edge="end"
-                          >
-                            {showPasswordConfirmation ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                )}
-              />
-            </Grid>
-            
-            {/* Rol */}
-            <Grid item xs={12} md={6}>
-              <Controller
-                name="rol"
-                control={control}
-                render={({ field }) => (
-                  <FormControl fullWidth error={!!errors.rol}>
-                    <InputLabel id="rol-label" required>Rol</InputLabel>
-                    <Select
-                      {...field}
-                      labelId="rol-label"
-                      label="Rol"
-                      disabled={loadingCatalogos}
-                    >
-                      <MenuItem value="">
-                        <em>Seleccione un rol</em>
-                      </MenuItem>
-                      {roles.map((rol) => (
-                        <MenuItem key={rol.id} value={rol.nombre}>
-                          {rol.nombre}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                    {errors.rol && (
-                      <FormHelperText>{errors.rol.message}</FormHelperText>
-                    )}
-                  </FormControl>
-                )}
-              />
-            </Grid>
-            
-            {/* Estado activo/inactivo */}
-            <Grid item xs={12} md={6}>
-              <Controller
-                name="activo"
-                control={control}
-                render={({ field }) => (
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={field.value}
-                        onChange={(e) => field.onChange(e.target.checked)}
-                      />
-                    }
-                    label="Usuario Activo"
-                  />
-                )}
-              />
-            </Grid>
-            
-            {/* Cliente (solo visible si el rol es Cliente) */}
-            {watchRol === 'Cliente' && (
-              <Grid item xs={12} md={6}>
-                <Controller
-                  name="cliente_id"
-                  control={control}
-                  render={({ field }) => (
-                    <FormControl fullWidth error={!!errors.cliente_id}>
-                      <InputLabel id="cliente-label" required>Cliente</InputLabel>
-                      <Select
-                        {...field}
-                        labelId="cliente-label"
-                        label="Cliente"
-                        value={field.value || ''}
-                        disabled={loadingCatalogos}
+              <TextField
+                fullWidth
+                label={isEdit ? "Nueva Contraseña (opcional)" : "Contraseña"}
+                variant="outlined"
+                type={showPassword.password ? 'text' : 'password'}
+                {...register('password')}
+                error={!!errors.password}
+                helperText={errors.password?.message}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SecurityIcon color="action" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label="toggle password visibility"
+                        onClick={() => handleTogglePassword('password')}
+                        edge="end"
                       >
-                        <MenuItem value="">
-                          <em>Seleccione un cliente</em>
-                        </MenuItem>
-                        {clientes.map((cliente) => (
-                          <MenuItem key={cliente.id} value={cliente.id}>
-                            {cliente.razon_social}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                      {errors.cliente_id && (
-                        <FormHelperText>{errors.cliente_id.message}</FormHelperText>
-                      )}
-                    </FormControl>
+                        {showPassword.password ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+
+            {/* Confirmar Contraseña */}
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label={isEdit ? "Confirmar Nueva Contraseña" : "Confirmar Contraseña"}
+                variant="outlined"
+                type={showPassword.confirmation ? 'text' : 'password'}
+                {...register('password_confirmation')}
+                error={!!errors.password_confirmation}
+                helperText={errors.password_confirmation?.message}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SecurityIcon color="action" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label="toggle password visibility"
+                        onClick={() => handleTogglePassword('confirmation')}
+                        edge="end"
+                      >
+                        {showPassword.confirmation ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Divider sx={{ my: 1 }} />
+            </Grid>
+
+            {/* Permisos y asignaciones */}
+            <Grid item xs={12}>
+              <Typography variant="h6" fontWeight="medium" gutterBottom>
+                Permisos y asignaciones
+              </Typography>
+            </Grid>
+
+            {/* Rol */}
+            <Grid item xs={12} md={isClienteRol ? 6 : 12}>
+              <FormControl 
+                fullWidth 
+                error={!!errors.rol_id} 
+                disabled={isSelfAccount && currentUser?.rol !== 'Administrador'}
+              >
+                <InputLabel id="rol-label">Rol</InputLabel>
+                <Select
+                  labelId="rol-label"
+                  value={selectedRol || ''}
+                  label="Rol"
+                  onChange={handleRolChange}
+                  startAdornment={
+                    <InputAdornment position="start">
+                      <SecurityIcon color="action" />
+                    </InputAdornment>
+                  }
+                >
+                  <MenuItem value={1}>Gerente</MenuItem>
+                  <MenuItem value={2}>Administrador</MenuItem>
+                  <MenuItem value={3}>Cliente</MenuItem>
+                </Select>
+                {errors.rol_id && (
+                  <FormHelperText>{errors.rol_id.message}</FormHelperText>
+                )}
+              </FormControl>
+            </Grid>
+
+            {/* Cliente (solo para rol de Cliente) */}
+            {isClienteRol && (
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth error={!!errors.cliente_id}>
+                  <InputLabel id="cliente-label">Cliente</InputLabel>
+                  <Select
+                    labelId="cliente-label"
+                    value={selectedCliente || ''}
+                    label="Cliente"
+                    onChange={handleClienteChange}
+                    startAdornment={
+                      <InputAdornment position="start">
+                        <BusinessIcon color="action" />
+                      </InputAdornment>
+                    }
+                    {...register('cliente_id')}
+                  >
+                    {clientes.map((cliente) => (
+                      <MenuItem key={cliente.id} value={cliente.id}>
+                        {cliente.razon_social}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {errors.cliente_id && (
+                    <FormHelperText>{errors.cliente_id.message}</FormHelperText>
                   )}
-                />
+                </FormControl>
               </Grid>
             )}
-            
-            {/* Sucursales (solo visible si el rol es Cliente y hay un cliente seleccionado) */}
-            {watchRol === 'Cliente' && selectedCliente && (
-              <Grid item xs={12} md={6}>
+
+            {/* Sucursales (solo para rol de Cliente y si hay cliente seleccionado) */}
+            {isClienteRol && selectedCliente && (
+              <Grid item xs={12}>
                 <Controller
                   name="sucursales"
                   control={control}
                   render={({ field }) => (
                     <FormControl fullWidth error={!!errors.sucursales}>
-                      <InputLabel id="sucursales-label" required>Sucursales</InputLabel>
-                      <Select
-                        {...field}
-                        labelId="sucursales-label"
-                        label="Sucursales"
+                      <Autocomplete
                         multiple
-                        renderValue={(selected) => (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.map((value) => {
-                              const sucursal = sucursales.find(s => s.id === value);
-                              return (
-                                <Chip key={value} label={sucursal ? sucursal.nombre : value} size="small" />
-                              );
-                            })}
-                          </Box>
+                        id="sucursales-autocomplete"
+                        options={sucursales}
+                        getOptionLabel={(option) => option.nombre}
+                        value={field.value || []}
+                        onChange={(_, newValue) => {
+                          field.onChange(newValue);
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Sucursales"
+                            placeholder="Seleccionar sucursales"
+                            error={!!errors.sucursales}
+                            helperText={errors.sucursales?.message}
+                            InputProps={{
+                              ...params.InputProps,
+                              startAdornment: (
+                                <>
+                                  <InputAdornment position="start">
+                                    <LocationIcon color="action" />
+                                  </InputAdornment>
+                                  {params.InputProps.startAdornment}
+                                </>
+                              )
+                            }}
+                          />
                         )}
-                      >
-                        {sucursales.map((sucursal) => (
-                          <MenuItem key={sucursal.id} value={sucursal.id}>
-                            <Checkbox checked={field.value.indexOf(sucursal.id) > -1} />
-                            <ListItemText primary={sucursal.nombre} />
-                          </MenuItem>
-                        ))}
-                      </Select>
-                      {errors.sucursales && (
-                        <FormHelperText>{errors.sucursales.message}</FormHelperText>
-                      )}
+                        renderTags={(value, getTagProps) =>
+                          value.map((option, index) => (
+                            <Chip
+                              label={option.nombre}
+                              {...getTagProps({ index })}
+                              key={option.id}
+                            />
+                          ))
+                        }
+                      />
                     </FormControl>
                   )}
                 />
               </Grid>
             )}
           </Grid>
-        </CardContent>
-        
-        <Divider />
-        
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 2 }}>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={onCancel}
-            startIcon={<CancelIcon />}
-            sx={{ mr: 1 }}
-          >
-            Cancelar
-          </Button>
-          
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <SaveIcon />}
-            disabled={loading}
-          >
-            {user ? 'Actualizar' : 'Guardar'}
-          </Button>
-        </Box>
-      </Card>
-    </form>
+
+          <Divider sx={{ my: 3 }} />
+
+          {/* Botones de acción */}
+          <Box display="flex" justifyContent="flex-end">
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<CancelIcon />}
+              onClick={onCancel}
+              sx={{ mr: 2 }}
+              disabled={formSubmitting || loading}
+            >
+              Cancelar
+            </Button>
+            
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              startIcon={formSubmitting || loading ? <CircularProgress size={24} color="inherit" /> : <SaveIcon />}
+              disabled={formSubmitting || loading}
+            >
+              {isEdit ? 'Actualizar' : 'Crear'} Usuario
+            </Button>
+          </Box>
+        </form>
+      </CardContent>
+    </Card>
   );
 };
 

@@ -25,6 +25,13 @@ const UserEdit = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  // Mapeo de IDs de rol a nombres
+  const rolMapping = {
+    1: 'Gerente',
+    2: 'Administrador',
+    3: 'Cliente'
+  };
+
   // Determinar si el usuario actual puede gestionar este usuario
   const isAdmin = currentUser?.rol === 'Gerente' || currentUser?.rol === 'Administrador';
   const isSelfAccount = currentUser?.id === Number(id);
@@ -38,7 +45,13 @@ const UserEdit = () => {
         const response = await userService.getUserById(id);
         
         if (response.success) {
-          setUser(response.data);
+          // Agregar el nombre del rol basado en rol_id
+          const userData = {
+            ...response.data,
+            rol: response.data.rol_id ? rolMapping[response.data.rol_id] : response.data.rol || 'Desconocido'
+          };
+          setUser(userData);
+          
           // Verificar permisos
           const canEdit = isAdmin || isSelfAccount;
           if (!canEdit) {
@@ -68,6 +81,13 @@ const UserEdit = () => {
         delete data.password;
         delete data.password_confirmation;
       }
+      
+      // Asegurarse de que rol_id sea un número
+      if (data.rol_id) {
+        data.rol_id = parseInt(data.rol_id, 10);
+      }
+      
+      console.log('Datos para actualizar usuario:', data);
       
       const response = await userService.updateUser(id, data);
       

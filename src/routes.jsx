@@ -37,19 +37,22 @@ import ClienteEdit from './pages/clientes/ClienteEdit';
 // Páginas de sucursales
 import SucursalList from './pages/sucursales/SucursalList';
 import SucursalCreate from './pages/sucursales/SucursalCreate';
+import SucursalDetail from './pages/sucursales/SucursalDetail';
+import SucursalEdit from './pages/sucursales/SucursalEdit';
 
 // Páginas de sierras
 import SierraList from './pages/sierras/SierraList';
 import SierraDetail from './pages/sierras/SierraDetail';
 import SierraCreate from './pages/sierras/SierraCreate';
 import SierraEdit from './pages/sierras/SierraEdit';
-
+import ScanSierraAfilado from './pages/afilados/ScanSierraAfilado';
 
 
 // Páginas de afilados
 import AfiladoList from './pages/afilados/AfiladoList';
 import AfiladoCreate from './pages/afilados/AfiladoCreate';
 import AfiladoDetail from './pages/afilados/AfiladoDetail';
+import RegistroSalidaMasiva from './pages/afilados/RegistroSalidaMasiva';
 
 
 
@@ -76,6 +79,8 @@ const AppRoutes = () => {
             {/* Rutas de sucursales */}
             <Route path="/sucursales" element={<SucursalList />} />
             <Route path="/sucursales/nueva" element={<SucursalCreate />} />
+            <Route path="/sucursales/:id" element={<SucursalDetail />} />
+            <Route path="/sucursales/:id/editar" element={<SucursalEdit />} />
 
             {/* Rutas de sierras */}
             <Route path="/sierras" element={<SierraList />} />
@@ -87,6 +92,8 @@ const AppRoutes = () => {
             <Route path="/afilados" element={<AfiladoList />} />
             <Route path="/afilados/nuevo" element={<AfiladoCreate />} />
             <Route path="/afilados/:id" element={<AfiladoDetail />} />
+            <Route path="/afilados/escanear" element={<ScanSierraAfilado />} />
+            <Route path="/afilados/salida-masiva" element={<RegistroSalidaMasiva />} />
           </Route>
         </Route>
 

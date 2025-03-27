@@ -53,6 +53,7 @@ import { useAuth } from '../../context/AuthContext';
 import sierraService from '../../services/sierraService';
 import afiladoService from '../../services/afiladoService';
 import clienteService from '../../services/clienteService';
+import sucursalService from '../../services/sucursalService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -70,7 +71,8 @@ const SierraDetail = () => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(!!location.state?.message);
   const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
-  const [clientes, setClientes] = useState([]);
+  const [cliente, setCliente] = useState(null);
+  const [sucursal, setSucursal] = useState(null);
   
   // Estados para paginación de afilados
   const [page, setPage] = useState(0);
@@ -85,17 +87,26 @@ const SierraDetail = () => {
       setError(null);
       
       try {
-        // Cargar la lista de clientes
-        const clientesResponse = await clienteService.getAllClientes();
-        if (clientesResponse.success) {
-          setClientes(clientesResponse.data);
-        }
-        
-        // Obtener datos de la sierra usando el nuevo endpoint
+        // Obtener datos de la sierra
         const response = await sierraService.getSierraById(id);
         
         if (response.success) {
           setSierra(response.data);
+          
+          // Cargar información del cliente y sucursal
+          if (response.data.sucursal_id) {
+            const sucursalResponse = await sucursalService.getSucursalById(response.data.sucursal_id);
+            if (sucursalResponse.success) {
+              setSucursal(sucursalResponse.data);
+              
+              if (sucursalResponse.data.cliente_id) {
+                const clienteResponse = await clienteService.getClienteById(sucursalResponse.data.cliente_id);
+                if (clienteResponse.success) {
+                  setCliente(clienteResponse.data);
+                }
+              }
+            }
+          }
           
           // Si la sierra tiene afilados incluidos en la respuesta, usarlos
           if (response.data.afilados && Array.isArray(response.data.afilados)) {
@@ -147,14 +158,18 @@ const SierraDetail = () => {
     setLoading(true);
     
     try {
-      // En un caso real, llamarías al servicio para eliminar
-      alert(`Eliminación simulada de la sierra ${sierra.codigo_barra}`);
-      navigate('/sierras', { 
-        state: { 
-          message: 'Sierra eliminada correctamente',
-          severity: 'success'
-        } 
-      });
+      const response = await sierraService.deleteSierra(sierra.id);
+      if (response.success) {
+        navigate('/sierras', { 
+          state: { 
+            message: 'Sierra eliminada correctamente',
+            severity: 'success'
+          } 
+        });
+      } else {
+        setError('Error al eliminar la sierra: ' + response.error);
+        setLoading(false);
+      }
     } catch (err) {
       console.error('Error al eliminar sierra:', err);
       setError('Error al eliminar la sierra. Por favor, inténtelo de nuevo.');
@@ -226,20 +241,40 @@ const SierraDetail = () => {
   // Afilados pendientes (sin fecha de salida)
   const afiladosPendientes = afilados.filter(a => !a.fecha_salida);
 
+  // Obtener información del cliente
   const getClienteNombre = () => {
-    // Primero intentar obtener desde el objeto anidado completo
+    // Primero intentar usar el cliente cargado
+    if (cliente?.razon_social) {
+      return cliente.razon_social;
+    }
+    
+    // Luego intentar desde el objeto anidado en sierra
     if (sierra.sucursales?.clientes?.razon_social) {
       return sierra.sucursales.clientes.razon_social;
     }
     
-    // Si no hay información completa pero tenemos el ID del cliente
-    if (sierra.sucursales?.cliente_id) {
-      return `Cliente ID: ${sierra.sucursales.cliente_id}`;
+    // Si no hay nombre pero tenemos ID
+    if (sierra.sucursales?.cliente_id || sucursal?.cliente_id) {
+      return 'Cliente no disponible';
     }
     
     return 'No especificado';
   };
 
+  // Obtener información de la sucursal
+  const getSucursalNombre = () => {
+    // Primero intentar usar la sucursal cargada
+    if (sucursal?.nombre) {
+      return sucursal.nombre;
+    }
+    
+    // Luego intentar desde el objeto anidado en sierra
+    if (sierra.sucursales?.nombre) {
+      return sierra.sucursales.nombre;
+    }
+    
+    return 'No especificada';
+  };
 
   return (
     <Box>
@@ -360,13 +395,28 @@ const SierraDetail = () => {
                     <Box display="flex" alignItems="center">
                       <BusinessIcon color="info" sx={{ mr: 1 }} />
                       <Box>
-                        <Typography variant="body1" fontWeight="medium">
-                          {sierra.sucursales?.clientes?.razon_social || 
-                          (sierra.sucursales?.cliente_id ? `Cliente ID: ${sierra.sucursales.cliente_id}` : 'No especificado')}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          <SucursalIcon fontSize="small" sx={{ mr: 0.5, fontSize: '1rem', verticalAlign: 'text-bottom' }} />
+                        <Typography variant="body1" fontWeight="medium" component={RouterLink} 
+                          to={`/clientes/${cliente?.id || sierra.sucursales?.cliente_id || ''}`}
+                          sx={{ 
+                            color: 'inherit', 
+                            textDecoration: 'none',
+                            '&:hover': { textDecoration: 'underline' }
+                          }}
+                        >
                           {getClienteNombre()}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" component={RouterLink}
+                          to={`/sucursales/${sucursal?.id || sierra.sucursal_id || ''}`}
+                          sx={{ 
+                            color: 'text.secondary', 
+                            textDecoration: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            '&:hover': { textDecoration: 'underline' }
+                          }}
+                        >
+                          <SucursalIcon fontSize="small" sx={{ mr: 0.5, fontSize: '1rem', verticalAlign: 'text-bottom' }} />
+                          {getSucursalNombre()}
                         </Typography>
                       </Box>
                     </Box>

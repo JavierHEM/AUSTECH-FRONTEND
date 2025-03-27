@@ -8,17 +8,32 @@ import {
   Breadcrumbs,
   Link as MuiLink,
   CircularProgress,
-  Alert
+  Alert,
+  Card,
+  CardContent,
+  Grid,
+  TextField,
+  Chip,
+  Paper
 } from '@mui/material';
-import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
+import {
+  ArrowBack as ArrowBackIcon,
+  Business as BusinessIcon,
+  StorefrontOutlined as SucursalIcon,
+  Info as InfoIcon
+} from '@mui/icons-material';
 import SierraForm from '../../components/forms/SierraForm';
 import sierraService from '../../services/sierraService';
+import clienteService from '../../services/clienteService';
+import sucursalService from '../../services/sucursalService';
 
 const SierraEdit = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   
   const [sierra, setSierra] = useState(null);
+  const [cliente, setCliente] = useState(null);
+  const [sucursal, setSucursal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -29,11 +44,32 @@ const SierraEdit = () => {
       setError(null);
       
       try {
-        // Usar el nuevo endpoint para obtener la sierra por ID
+        // Usar el endpoint para obtener la sierra por ID
         const response = await sierraService.getSierraById(id);
         
         if (response.success) {
           setSierra(response.data);
+          
+          // Cargar información de la sucursal
+          if (response.data.sucursal_id) {
+            try {
+              const sucursalResponse = await sucursalService.getSucursalById(response.data.sucursal_id);
+              if (sucursalResponse.success) {
+                setSucursal(sucursalResponse.data);
+                
+                // Cargar información del cliente
+                if (sucursalResponse.data.cliente_id) {
+                  const clienteResponse = await clienteService.getClienteById(sucursalResponse.data.cliente_id);
+                  if (clienteResponse.success) {
+                    setCliente(clienteResponse.data);
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('Error al obtener sucursal o cliente:', err);
+              // No interrumpimos el flujo principal si hay error al cargar sucursal/cliente
+            }
+          }
         } else {
           setError(response.error || 'Error al cargar la sierra');
         }
@@ -53,10 +89,16 @@ const SierraEdit = () => {
     setError(null);
     
     try {
-      const response = await sierraService.updateSierra(id, data);
+      // Mantenemos la misma sucursal y cliente
+      const updatedData = {
+        ...data,
+        sucursal_id: sierra.sucursal_id // Aseguramos que no se cambie la sucursal
+      };
+      
+      const response = await sierraService.updateSierra(id, updatedData);
       
       if (response.success) {
-        // Opcionalmente esperar un poco para mostrar mensaje de éxito
+        // Esperar un poco para mostrar mensaje de éxito
         setTimeout(() => {
           navigate(`/sierras/${id}`, { 
             state: { message: 'Sierra actualizada correctamente' } 
@@ -120,6 +162,32 @@ const SierraEdit = () => {
     );
   }
 
+  // Obtener el nombre del cliente
+  const getClienteNombre = () => {
+    if (cliente?.razon_social) {
+      return cliente.razon_social;
+    }
+    
+    if (sierra.sucursales?.clientes?.razon_social) {
+      return sierra.sucursales.clientes.razon_social;
+    }
+    
+    return 'Cliente no especificado';
+  };
+
+  // Obtener el nombre de la sucursal
+  const getSucursalNombre = () => {
+    if (sucursal?.nombre) {
+      return sucursal.nombre;
+    }
+    
+    if (sierra.sucursales?.nombre) {
+      return sierra.sucursales.nombre;
+    }
+    
+    return 'Sucursal no especificada';
+  };
+
   return (
     <Box>
       {/* Navegación de migas de pan */}
@@ -155,11 +223,88 @@ const SierraEdit = () => {
         </Button>
       </Box>
 
-      {/* Aviso */}
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Puede modificar los datos de la sierra. Tenga en cuenta que cambiar la sucursal puede 
-        afectar a los registros de afilados asociados.
-      </Alert>
+      {/* Información del cliente y sucursal (no modificable) */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box display="flex" alignItems="center" mb={2}>
+            <InfoIcon color="info" sx={{ mr: 1 }} />
+            <Typography variant="h6">
+              Información del Cliente y Sucursal
+            </Typography>
+          </Box>
+          
+          <Alert severity="info" sx={{ mb: 3 }}>
+            La información del cliente y sucursal no puede ser modificada una vez registrada la sierra.
+          </Alert>
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Box display="flex" alignItems="center" mb={1}>
+                  <BusinessIcon color="primary" sx={{ mr: 1 }} />
+                  <Typography variant="subtitle1" fontWeight="medium">
+                    Cliente
+                  </Typography>
+                </Box>
+                <Typography variant="body1">
+                  {getClienteNombre()}
+                </Typography>
+                {cliente && (
+                  <Box mt={1}>
+                    <Chip 
+                      label={`ID: ${cliente.id}`}
+                      size="small" 
+                      variant="outlined" 
+                      sx={{ mr: 1 }}
+                    />
+                    {cliente.activo && (
+                      <Chip 
+                        label="Activo"
+                        size="small" 
+                        color="success"
+                      />
+                    )}
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Box display="flex" alignItems="center" mb={1}>
+                  <SucursalIcon color="secondary" sx={{ mr: 1 }} />
+                  <Typography variant="subtitle1" fontWeight="medium">
+                    Sucursal
+                  </Typography>
+                </Box>
+                <Typography variant="body1">
+                  {getSucursalNombre()}
+                </Typography>
+                {sucursal && (
+                  <Box mt={1}>
+                    <Chip 
+                      label={`ID: ${sucursal.id}`}
+                      size="small" 
+                      variant="outlined" 
+                      sx={{ mr: 1 }}
+                    />
+                    <Chip 
+                      label={sucursal.direccion}
+                      size="small" 
+                      variant="outlined"
+                      sx={{ mr: 1 }}
+                    />
+                    <Chip 
+                      label={sucursal.telefono}
+                      size="small" 
+                      variant="outlined" 
+                    />
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
       {/* Formulario */}
       <SierraForm 
@@ -167,7 +312,10 @@ const SierraEdit = () => {
         onSubmit={handleSubmit} 
         onCancel={handleCancel} 
         loading={submitting} 
-        error={error} 
+        error={error}
+        disableClienteSucursal={true} // Parámetro para deshabilitar campos cliente/sucursal
+        clienteInfo={cliente}
+        sucursalInfo={sucursal}
       />
     </Box>
   );
