@@ -65,7 +65,7 @@ import UserProfileModal from '../user/UserProfileModal';
 import { motion } from 'framer-motion';
 
 // Logo
-import logo from '../../assets/logo2.png';
+import logo2 from '../../assets/logo2.png';
 import logoR from '../../assets/logo_a.png';
 
 // Ancho del sidebar
