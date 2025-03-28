@@ -65,7 +65,8 @@ import UserProfileModal from '../user/UserProfileModal';
 import { motion } from 'framer-motion';
 
 // Logo
-import logo from '../../assets/logo.png';
+import logo from '../../assets/logo2.png';
+import logoR from '../../assets/logo_a.png';
 
 // Ancho del sidebar
 const drawerWidth = 280;
@@ -377,7 +378,7 @@ const MainLayout = () => {
             <Zoom in={true} style={{ transitionDelay: '100ms' }}>
               <Box
                 component="img"
-                src={logo}
+                src={isMobile || isCollapsed ? logo_a : logo2}
                 alt="Logo Sistema Afilado"
                 sx={{
                   height: isCollapsed ? 30 : 40,  // Reducido un poco
