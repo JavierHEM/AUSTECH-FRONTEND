@@ -66,7 +66,7 @@ import { motion } from 'framer-motion';
 
 // Logo
 import logo2 from '../../assets/logo2.png';
-import logoR from '../../assets/logo_a.png';
+import logo_a from '../../assets/logo_a.png';
 
 // Ancho del sidebar
 const drawerWidth = 280;
@@ -401,7 +401,6 @@ const MainLayout = () => {
                     textShadow: '1px 1px 2px rgba(0,0,0,0.15)'
                   }}
                 >
-                  Sistema Afilado
                 </Typography>
               </Fade>
             )}
