@@ -23,9 +23,32 @@ const UserCreate = () => {
     setError(null);
     
     try {
+      // Primero creamos el usuario base
       const response = await userService.createUser(data);
       
       if (response.success) {
+        // Si el usuario es tipo Cliente (rol_id = 3) y tiene sucursales seleccionadas
+        if (data.rol_id == 3 && data.sucursales && data.sucursales.length > 0) {
+          // Extraer los IDs de las sucursales si es un array de objetos
+          const sucursalIds = Array.isArray(data.sucursales) 
+            ? data.sucursales.map(s => typeof s === 'object' ? s.id : s) 
+            : data.sucursales;
+          
+          console.log("Asignando sucursales al usuario:", response.data.id, sucursalIds);
+          
+          // Asignar sucursales al usuario recién creado
+          const sucursalResponse = await userService.assignSucursalesToUser(
+            response.data.id, 
+            sucursalIds
+          );
+          
+          if (!sucursalResponse.success) {
+            console.error("Error al asignar sucursales:", sucursalResponse.error);
+            setError("Usuario creado pero hubo un error al asignar sucursales. Por favor, asigne las sucursales manualmente.");
+            return { success: false };
+          }
+        }
+        
         // Esperar un poco para mostrar mensaje de éxito
         setTimeout(() => {
           navigate(`/usuarios/${response.data.id}`, { 

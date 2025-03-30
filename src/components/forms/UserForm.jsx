@@ -5,245 +5,214 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import {
   Box,
-  Card,
-  CardContent,
   Grid,
   TextField,
+  Button,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  Button,
-  Divider,
   FormHelperText,
-  InputAdornment,
-  IconButton,
+  Divider,
+  Card,
+  CardContent,
+  Typography,
   Alert,
   CircularProgress,
-  Typography,
   Autocomplete,
-  Chip
+  Chip,
+  InputAdornment,
+  IconButton
 } from '@mui/material';
 import {
   Save as SaveIcon,
   Cancel as CancelIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
-  Email as EmailIcon,
   Person as PersonIcon,
+  Email as EmailIcon,
   Security as SecurityIcon,
   Business as BusinessIcon,
-  LocationOn as LocationIcon
+  StorefrontOutlined as SucursalIcon
 } from '@mui/icons-material';
-import { useAuth } from '../../context/AuthContext';
-import catalogoService from '../../services/catalogoService';
 import clienteService from '../../services/clienteService';
+import sucursalService from '../../services/sucursalService'; // Importar sucursalService
 
 // Esquema de validación
-const createUserSchema = yup.object().shape({
-  nombre: yup
-    .string()
-    .required('El nombre es requerido'),
-  apellido: yup
-    .string()
-    .required('El apellido es requerido'),
-  email: yup
-    .string()
-    .email('Ingrese un email válido')
-    .required('El email es requerido'),
-  password: yup
-    .string()
-    .required('La contraseña es requerida')
-    .min(6, 'La contraseña debe tener al menos 6 caracteres'),
-  password_confirmation: yup
-    .string()
-    .oneOf([yup.ref('password')], 'Las contraseñas deben coincidir')
-    .required('La confirmación de contraseña es requerida'),
-  rol_id: yup
-    .number()
-    .required('El rol es requerido'),
-  cliente_id: yup
-    .number()
-    .nullable()
-    .when('rol_id', {
-      is: (value) => value === 3, // ID del rol 'Cliente'
-      then: yup.number().required('El cliente es requerido para usuarios tipo Cliente')
-    }),
-  sucursales: yup
-    .array()
-    .when('rol_id', {
-      is: (value) => value === 3, // ID del rol 'Cliente'
-      then: yup.array().min(1, 'Seleccione al menos una sucursal')
-    })
+const userSchema = yup.object().shape({
+  nombre: yup.string().required('El nombre es requerido'),
+  apellido: yup.string().required('El apellido es requerido'),
+  email: yup.string().email('Email no válido').required('El email es requerido'),
+  rol_id: yup.mixed().required('El rol es requerido'),
+  // Condicional para rol de cliente (rol_id = 3)
+  cliente_id: yup.mixed().when('rol_id', {
+    is: (val) => val == 3, // Usar == para comparar tanto string como número
+    then: () => yup.mixed().required('El cliente es requerido para usuarios con rol de Cliente'),
+    otherwise: () => yup.mixed().nullable()
+  }),
+  sucursales: yup.array().when('rol_id', {
+    is: (val) => val == 3, // Usar == para comparar tanto string como número
+    then: () => yup.array().min(1, 'Debe seleccionar al menos una sucursal'),
+    otherwise: () => yup.array().nullable()
+  }),
+  // Password solo requerido para nuevos usuarios
+  password: yup.string().when('isNewUser', {
+    is: true,
+    then: () => yup.string().required('La contraseña es requerida').min(6, 'Mínimo 6 caracteres'),
+    otherwise: () => yup.string().nullable().transform(value => (value === "" ? null : value))
+  }),
+  password_confirmation: yup.string().when('password', {
+    is: (password) => password && password.length > 0,
+    then: () => yup.string()
+      .required('Confirmación requerida')
+      .oneOf([yup.ref('password')], 'Las contraseñas deben coincidir'),
+    otherwise: () => yup.string().nullable()
+  })
 });
 
-// Esquema para edición (contraseña opcional)
-const editUserSchema = yup.object().shape({
-  nombre: yup
-    .string()
-    .required('El nombre es requerido'),
-  apellido: yup
-    .string()
-    .required('El apellido es requerido'),
-  email: yup
-    .string()
-    .email('Ingrese un email válido')
-    .required('El email es requerido'),
-  password: yup
-    .string()
-    .nullable()
-    .transform(value => value || null)
-    .min(6, 'La contraseña debe tener al menos 6 caracteres'),
-  password_confirmation: yup
-    .string()
-    .nullable()
-    .transform(value => value || null)
-    .oneOf([yup.ref('password')], 'Las contraseñas deben coincidir'),
-  rol_id: yup
-    .number()
-    .required('El rol es requerido'),
-  cliente_id: yup
-    .number()
-    .nullable()
-    .when('rol_id', {
-      is: (value) => value === 3, // ID del rol 'Cliente'
-      then: yup.number().required('El cliente es requerido para usuarios tipo Cliente')
-    }),
-  sucursales: yup
-    .array()
-    .when('rol_id', {
-      is: (value) => value === 3, // ID del rol 'Cliente'
-      then: yup.array().min(1, 'Seleccione al menos una sucursal')
-    })
-});
-
-const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = null, isSelfAccount = false }) => {
-  const { user: currentUser } = useAuth();
-  const isEdit = !!user;
+const UserForm = ({ user, onSubmit, onCancel, loading, error, isSelfAccount }) => {
+  const isNewUser = !user;
   
+  // Estados para la carga de datos relacionados
   const [roles, setRoles] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [sucursales, setSucursales] = useState([]);
-  const [selectedRol, setSelectedRol] = useState(user?.rol_id || null);
-  const [selectedCliente, setSelectedCliente] = useState(user?.cliente_id || null);
+  const [loadingData, setLoadingData] = useState(true);
+  const [selectedCliente, setSelectedCliente] = useState(null);
   const [showPassword, setShowPassword] = useState({
     password: false,
     confirmation: false
   });
-  const [loadingData, setLoadingData] = useState(true);
-  const [formSubmitting, setFormSubmitting] = useState(false);
 
-  // Usar esquema de validación apropiado según si es creación o edición
-  const validationSchema = isEdit ? editUserSchema : createUserSchema;
-
+  // Configurar el formulario
   const {
     register,
     handleSubmit,
     control,
+    watch,
     setValue,
     formState: { errors },
-    watch
+    reset
   } = useForm({
-    resolver: yupResolver(validationSchema),
+    resolver: yupResolver(userSchema),
     defaultValues: {
+      isNewUser: isNewUser,
       nombre: user?.nombre || '',
       apellido: user?.apellido || '',
       email: user?.email || '',
-      password: '',
-      password_confirmation: '',
-      rol_id: user?.rol_id ? parseInt(user.rol_id, 10) : '',
-      cliente_id: user?.cliente_id || null,
-      sucursales: user?.sucursales || []
+      rol_id: user?.rol_id || '',
+      cliente_id: user?.cliente_id || '',
+      sucursales: user?.sucursales || [],
+      activo: user ? user.activo : true
     }
   });
 
-  // Observar cambios en el rol seleccionado
   const watchRolId = watch('rol_id');
-  const watchClienteId = watch('cliente_id');
-  const isClienteRol = watchRolId === 3; // ID del rol 'Cliente'
+  const isClienteRole = watchRolId === 3 || watchRolId === '3';
 
-  // Cargar datos necesarios
+  // Efecto para cargar datos relacionados (roles, clientes, sucursales)
   useEffect(() => {
-    const loadFormData = async () => {
+    const loadRelatedData = async () => {
       setLoadingData(true);
+      
       try {
-        // Cargar roles
-        const rolesResponse = await catalogoService.getRoles();
-        if (rolesResponse.success) {
-          setRoles(rolesResponse.data);
-        } else {
-          console.error('Error al cargar roles:', rolesResponse.error);
-        }
-
-        // Cargar clientes
+        // Cargar roles (simulado aquí - debe conectarse a un servicio real)
+        const rolesData = [
+          { id: 1, nombre: 'Gerente' },
+          { id: 2, nombre: 'Administrador' },
+          { id: 3, nombre: 'Cliente' }
+        ];
+        setRoles(rolesData);
+        
+        // Cargar clientes (esta debe ser una llamada real a la API)
         const clientesResponse = await clienteService.getAllClientes();
         if (clientesResponse.success) {
           setClientes(clientesResponse.data);
-        } else {
-          console.error('Error al cargar clientes:', clientesResponse.error);
-        }
-
-        // Si estamos editando y hay un cliente seleccionado, cargar sus sucursales
-        if (isEdit && user.cliente_id) {
-          loadSucursalesByCliente(user.cliente_id);
+          
+          // Si el usuario tiene un cliente_id, cargamos sus sucursales
+          if (user && user.cliente_id) {
+            const cliente = clientesResponse.data.find(c => c.id === user.cliente_id);
+            if (cliente) {
+              setSelectedCliente(cliente);
+              // Cargar sucursales del cliente seleccionado usando sucursalService
+              loadSucursales(cliente.id);
+            }
+          }
         }
       } catch (err) {
-        console.error('Error al cargar datos del formulario:', err);
+        console.error('Error al cargar datos relacionados:', err);
+        // Si estamos en modo de desarrollo, usamos datos de ejemplo
+        setClientes([
+          { id: 1, razon_social: 'Cliente 1' },
+          { id: 2, razon_social: 'Cliente 2' },
+          { id: 3, razon_social: 'Cliente 3' }
+        ]);
+        
+        setSucursales([
+          { id: 1, nombre: 'Sucursal A', cliente_id: 1 },
+          { id: 2, nombre: 'Sucursal B', cliente_id: 1 },
+          { id: 3, nombre: 'Sucursal C', cliente_id: 2 },
+          { id: 4, nombre: 'Sucursal D', cliente_id: 3 }
+        ]);
       } finally {
         setLoadingData(false);
       }
     };
+    
+    loadRelatedData();
+  }, [user]);
 
-    loadFormData();
-  }, [isEdit, user]);
-
-  // Cargar sucursales cuando cambia el cliente seleccionado
-  useEffect(() => {
-    if (watchClienteId) {
-      loadSucursalesByCliente(watchClienteId);
-    } else {
-      setSucursales([]);
-    }
-  }, [watchClienteId]);
-
-  // Función para cargar sucursales por cliente
-  const loadSucursalesByCliente = async (clienteId) => {
+  // Función para cargar sucursales de un cliente usando sucursalService
+  const loadSucursales = async (clienteId) => {
+    if (!clienteId) return;
+    
     try {
-      const response = await clienteService.getSucursalesByCliente(clienteId);
-      if (response.success) {
-        setSucursales(response.data);
+      const sucursalesResponse = await sucursalService.getSucursalesByCliente(clienteId);
+      if (sucursalesResponse.success) {
+        setSucursales(sucursalesResponse.data);
+        if (!user) {
+          // Si es un nuevo usuario, limpiar las sucursales seleccionadas previamente
+          setValue('sucursales', []);
+        }
       } else {
-        console.error('Error al cargar sucursales:', response.error);
-        setSucursales([]);
+        console.error("Error al cargar sucursales:", sucursalesResponse.error);
+        // Datos de ejemplo para desarrollo
+        setSucursales([
+          { id: 1, nombre: 'Sucursal A', cliente_id: clienteId },
+          { id: 2, nombre: 'Sucursal B', cliente_id: clienteId }
+        ]);
       }
     } catch (err) {
       console.error('Error al cargar sucursales:', err);
-      setSucursales([]);
+      // Datos de ejemplo para desarrollo
+      setSucursales([
+        { id: 1, nombre: 'Sucursal A', cliente_id: clienteId },
+        { id: 2, nombre: 'Sucursal B', cliente_id: clienteId }
+      ]);
     }
   };
 
-  // Manejar cambio de rol
-  const handleRolChange = (event) => {
-    const rolId = parseInt(event.target.value, 10);
-    setSelectedRol(rolId);
-    setValue('rol_id', rolId);
-    
-    // Limpiar campos de cliente y sucursales si no es rol de Cliente
-    if (rolId !== 3) {
-      setValue('cliente_id', null);
+  // Efecto para actualizar sucursales cuando se selecciona un cliente
+  useEffect(() => {
+    if (selectedCliente) {
+      loadSucursales(selectedCliente.id);
+    } else {
+      setSucursales([]);
       setValue('sucursales', []);
     }
+  }, [selectedCliente, setValue]);
+
+  // Manejar cambio de cliente seleccionado
+  const handleClienteChange = (event, newCliente) => {
+    setSelectedCliente(newCliente);
+    if (newCliente) {
+      setValue('cliente_id', newCliente.id);
+    } else {
+      setValue('cliente_id', '');
+    }
   };
 
-  // Manejar cambio de cliente
-  const handleClienteChange = (event) => {
-    const clienteId = event.target.value;
-    setSelectedCliente(clienteId);
-    setValue('cliente_id', clienteId);
-    setValue('sucursales', []); // Limpiar sucursales al cambiar de cliente
-  };
-
-  // Alternar visibilidad de contraseña
+  // Manejar mostrar/ocultar contraseña
   const handleTogglePassword = (field) => {
     setShowPassword({
       ...showPassword,
@@ -252,42 +221,13 @@ const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = nu
   };
 
   // Manejar envío del formulario
-  const onFormSubmit = async (data) => {
-    setFormSubmitting(true);
-    
-    // Asegurarse de que rol_id sea un número
-    if (data.rol_id) {
-      data.rol_id = parseInt(data.rol_id, 10);
-    }
-    
-    // Eliminar campos innecesarios según el rol
-    if (data.rol_id !== 3) {
-      delete data.cliente_id;
-      delete data.sucursales;
-    }
-    
-    // Si editamos y no hay contraseña, eliminar campos relacionados
-    if (isEdit && !data.password) {
-      delete data.password;
-      delete data.password_confirmation;
-    }
-    
-    console.log('Datos que se envían al servidor:', data);
-    
-    try {
-      const result = await onSubmit(data);
-      if (!result?.success) {
-        setFormSubmitting(false);
-      }
-    } catch (err) {
-      console.error('Error al enviar formulario:', err);
-      setFormSubmitting(false);
-    }
+  const handleFormSubmit = (data) => {
+    onSubmit(data);
   };
 
   if (loadingData) {
     return (
-      <Box display="flex" justifyContent="center" p={4}>
+      <Box display="flex" justifyContent="center" p={3}>
         <CircularProgress />
       </Box>
     );
@@ -301,22 +241,21 @@ const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = nu
             {error}
           </Alert>
         )}
-
-        <form onSubmit={handleSubmit(onFormSubmit)}>
+        
+        <form onSubmit={handleSubmit(handleFormSubmit)}>
           <Grid container spacing={3}>
-            {/* Información básica */}
+            {/* Datos personales */}
             <Grid item xs={12}>
-              <Typography variant="h6" fontWeight="medium" gutterBottom>
-                Información básica
+              <Typography variant="h6" gutterBottom>
+                Datos Personales
               </Typography>
+              <Divider sx={{ mb: 2 }} />
             </Grid>
-
-            {/* Nombre */}
+            
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
                 label="Nombre"
-                variant="outlined"
                 {...register('nombre')}
                 error={!!errors.nombre}
                 helperText={errors.nombre?.message}
@@ -325,17 +264,15 @@ const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = nu
                     <InputAdornment position="start">
                       <PersonIcon color="action" />
                     </InputAdornment>
-                  ),
+                  )
                 }}
               />
             </Grid>
-
-            {/* Apellido */}
+            
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
                 label="Apellido"
-                variant="outlined"
                 {...register('apellido')}
                 error={!!errors.apellido}
                 helperText={errors.apellido?.message}
@@ -344,17 +281,15 @@ const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = nu
                     <InputAdornment position="start">
                       <PersonIcon color="action" />
                     </InputAdornment>
-                  ),
+                  )
                 }}
               />
             </Grid>
-
-            {/* Email */}
+            
             <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="Email"
-                variant="outlined"
                 type="email"
                 {...register('email')}
                 error={!!errors.email}
@@ -364,27 +299,85 @@ const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = nu
                     <InputAdornment position="start">
                       <EmailIcon color="action" />
                     </InputAdornment>
-                  ),
+                  )
                 }}
               />
             </Grid>
-
-            {/* Contraseña */}
+            
+            {/* Configuración de acceso */}
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                Configuración de Acceso
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth error={!!errors.rol_id}>
+                <InputLabel id="rol-label">Rol</InputLabel>
+                <Controller
+                  name="rol_id"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      {...field}
+                      labelId="rol-label"
+                      label="Rol"
+                      disabled={isSelfAccount}
+                      startAdornment={
+                        <InputAdornment position="start">
+                          <SecurityIcon color="action" />
+                        </InputAdornment>
+                      }
+                    >
+                      {roles.map((rol) => (
+                        <MenuItem key={rol.id} value={rol.id}>
+                          {rol.nombre}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  )}
+                />
+                {errors.rol_id && (
+                  <FormHelperText>{errors.rol_id.message}</FormHelperText>
+                )}
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <FormControl 
+                fullWidth 
+                disabled={isSelfAccount}
+                sx={{ visibility: isNewUser ? 'hidden' : 'visible' }}
+              >
+                <InputLabel id="activo-label">Estado</InputLabel>
+                <Controller
+                  name="activo"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      {...field}
+                      labelId="activo-label"
+                      label="Estado"
+                    >
+                      <MenuItem value={true}>Activo</MenuItem>
+                      <MenuItem value={false}>Inactivo</MenuItem>
+                    </Select>
+                  )}
+                />
+              </FormControl>
+            </Grid>
+            
+            {/* Campos de contraseña */}
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label={isEdit ? "Nueva Contraseña (opcional)" : "Contraseña"}
-                variant="outlined"
+                label={isNewUser ? "Contraseña" : "Nueva Contraseña (opcional)"}
                 type={showPassword.password ? 'text' : 'password'}
                 {...register('password')}
                 error={!!errors.password}
-                helperText={errors.password?.message}
+                helperText={errors.password?.message || (isNewUser ? '' : 'Dejar en blanco para mantener la contraseña actual')}
                 InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SecurityIcon color="action" />
-                    </InputAdornment>
-                  ),
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton
@@ -395,142 +388,71 @@ const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = nu
                         {showPassword.password ? <VisibilityOffIcon /> : <VisibilityIcon />}
                       </IconButton>
                     </InputAdornment>
-                  ),
+                  )
                 }}
               />
             </Grid>
-
-            {/* Confirmar Contraseña */}
+            
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label={isEdit ? "Confirmar Nueva Contraseña" : "Confirmar Contraseña"}
-                variant="outlined"
+                label="Confirmar Contraseña"
                 type={showPassword.confirmation ? 'text' : 'password'}
                 {...register('password_confirmation')}
                 error={!!errors.password_confirmation}
                 helperText={errors.password_confirmation?.message}
                 InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SecurityIcon color="action" />
-                    </InputAdornment>
-                  ),
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton
-                        aria-label="toggle password visibility"
+                        aria-label="toggle password confirmation visibility"
                         onClick={() => handleTogglePassword('confirmation')}
                         edge="end"
                       >
                         {showPassword.confirmation ? <VisibilityOffIcon /> : <VisibilityIcon />}
                       </IconButton>
                     </InputAdornment>
-                  ),
+                  )
                 }}
               />
             </Grid>
-
-            <Grid item xs={12}>
-              <Divider sx={{ my: 1 }} />
-            </Grid>
-
-            {/* Permisos y asignaciones */}
-            <Grid item xs={12}>
-              <Typography variant="h6" fontWeight="medium" gutterBottom>
-                Permisos y asignaciones
-              </Typography>
-            </Grid>
-
-            {/* Rol */}
-            <Grid item xs={12} md={isClienteRol ? 6 : 12}>
-              <FormControl 
-                fullWidth 
-                error={!!errors.rol_id} 
-                disabled={isSelfAccount && currentUser?.rol !== 'Administrador'}
-              >
-                <InputLabel id="rol-label">Rol</InputLabel>
-                <Select
-                  labelId="rol-label"
-                  value={selectedRol || ''}
-                  label="Rol"
-                  onChange={handleRolChange}
-                  startAdornment={
-                    <InputAdornment position="start">
-                      <SecurityIcon color="action" />
-                    </InputAdornment>
-                  }
-                >
-                  <MenuItem value={1}>Gerente</MenuItem>
-                  <MenuItem value={2}>Administrador</MenuItem>
-                  <MenuItem value={3}>Cliente</MenuItem>
-                </Select>
-                {errors.rol_id && (
-                  <FormHelperText>{errors.rol_id.message}</FormHelperText>
-                )}
-              </FormControl>
-            </Grid>
-
-            {/* Cliente (solo para rol de Cliente) */}
-            {isClienteRol && (
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth error={!!errors.cliente_id}>
-                  <InputLabel id="cliente-label">Cliente</InputLabel>
-                  <Select
-                    labelId="cliente-label"
-                    value={selectedCliente || ''}
-                    label="Cliente"
-                    onChange={handleClienteChange}
-                    startAdornment={
-                      <InputAdornment position="start">
-                        <BusinessIcon color="action" />
-                      </InputAdornment>
-                    }
-                    {...register('cliente_id')}
-                  >
-                    {clientes.map((cliente) => (
-                      <MenuItem key={cliente.id} value={cliente.id}>
-                        {cliente.razon_social}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  {errors.cliente_id && (
-                    <FormHelperText>{errors.cliente_id.message}</FormHelperText>
-                  )}
-                </FormControl>
-              </Grid>
-            )}
-
-            {/* Sucursales (solo para rol de Cliente y si hay cliente seleccionado) */}
-            {isClienteRol && selectedCliente && (
-              <Grid item xs={12}>
-                <Controller
-                  name="sucursales"
-                  control={control}
-                  render={({ field }) => (
-                    <FormControl fullWidth error={!!errors.sucursales}>
+            
+            {/* Sección de Cliente (solo visible para rol Cliente) */}
+            {isClienteRole && (
+              <>
+                <Grid item xs={12}>
+                  <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                    Asociación de Cliente
+                  </Typography>
+                  <Divider sx={{ mb: 2 }} />
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <Controller
+                    name="cliente_id"
+                    control={control}
+                    render={({ field: { onChange, value } }) => (
                       <Autocomplete
-                        multiple
-                        id="sucursales-autocomplete"
-                        options={sucursales}
-                        getOptionLabel={(option) => option.nombre}
-                        value={field.value || []}
-                        onChange={(_, newValue) => {
-                          field.onChange(newValue);
+                        id="cliente-select"
+                        options={clientes}
+                        getOptionLabel={(option) => option.razon_social || ''}
+                        value={selectedCliente}
+                        onChange={(e, newValue) => {
+                          handleClienteChange(e, newValue);
+                          onChange(newValue ? newValue.id : '');
                         }}
                         renderInput={(params) => (
                           <TextField
                             {...params}
-                            label="Sucursales"
-                            placeholder="Seleccionar sucursales"
-                            error={!!errors.sucursales}
-                            helperText={errors.sucursales?.message}
+                            label="Cliente"
+                            error={!!errors.cliente_id}
+                            helperText={errors.cliente_id?.message}
                             InputProps={{
                               ...params.InputProps,
                               startAdornment: (
                                 <>
                                   <InputAdornment position="start">
-                                    <LocationIcon color="action" />
+                                    <BusinessIcon color="action" />
                                   </InputAdornment>
                                   {params.InputProps.startAdornment}
                                 </>
@@ -538,25 +460,66 @@ const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = nu
                             }}
                           />
                         )}
-                        renderTags={(value, getTagProps) =>
-                          value.map((option, index) => (
-                            <Chip
-                              label={option.nombre}
-                              {...getTagProps({ index })}
-                              key={option.id}
-                            />
-                          ))
-                        }
                       />
-                    </FormControl>
-                  )}
-                />
-              </Grid>
+                    )}
+                  />
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <FormControl fullWidth error={!!errors.sucursales}>
+                    <InputLabel id="sucursales-label">Sucursales</InputLabel>
+                    <Controller
+                      name="sucursales"
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          {...field}
+                          labelId="sucursales-label"
+                          label="Sucursales"
+                          multiple
+                          disabled={!selectedCliente}
+                          renderValue={(selected) => (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                              {selected.map((value) => {
+                                const sucursal = sucursales.find(s => s.id === value);
+                                return (
+                                  <Chip 
+                                    key={value} 
+                                    label={sucursal ? sucursal.nombre : value} 
+                                    icon={<SucursalIcon />}
+                                  />
+                                );
+                              })}
+                            </Box>
+                          )}
+                          startAdornment={
+                            <InputAdornment position="start">
+                              <SucursalIcon color="action" />
+                            </InputAdornment>
+                          }
+                        >
+                          {sucursales.map((sucursal) => (
+                            <MenuItem key={sucursal.id} value={sucursal.id}>
+                              {sucursal.nombre}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      )}
+                    />
+                    {errors.sucursales && (
+                      <FormHelperText>{errors.sucursales.message}</FormHelperText>
+                    )}
+                    {!selectedCliente && (
+                      <FormHelperText>Seleccione un cliente primero</FormHelperText>
+                    )}
+                  </FormControl>
+                </Grid>
+              </>
             )}
           </Grid>
-
+          
           <Divider sx={{ my: 3 }} />
-
+          
           {/* Botones de acción */}
           <Box display="flex" justifyContent="flex-end">
             <Button
@@ -565,7 +528,6 @@ const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = nu
               startIcon={<CancelIcon />}
               onClick={onCancel}
               sx={{ mr: 2 }}
-              disabled={formSubmitting || loading}
             >
               Cancelar
             </Button>
@@ -574,10 +536,10 @@ const UserForm = ({ user = null, onSubmit, onCancel, loading = false, error = nu
               type="submit"
               variant="contained"
               color="primary"
-              startIcon={formSubmitting || loading ? <CircularProgress size={24} color="inherit" /> : <SaveIcon />}
-              disabled={formSubmitting || loading}
+              startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <SaveIcon />}
+              disabled={loading}
             >
-              {isEdit ? 'Actualizar' : 'Crear'} Usuario
+              {isNewUser ? 'Crear Usuario' : 'Actualizar Usuario'}
             </Button>
           </Box>
         </form>

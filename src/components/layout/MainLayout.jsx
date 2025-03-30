@@ -249,67 +249,92 @@ const MainLayout = () => {
     }
   };
 
-  // Items del menú lateral
-  const menuItems = [
-    { 
-      text: 'Dashboard', 
-      icon: <DashboardIcon />, 
-      path: '/dashboard',
-      roles: ['Gerente', 'Administrador', 'Cliente'] 
-    },
-    { 
-      text: 'Usuarios', 
-      icon: <PersonIcon />, 
-      path: '/usuarios',
-      roles: ['Gerente', 'Administrador'] 
-    },
-    { 
-      text: 'Clientes', 
-      icon: <BusinessIcon />, 
-      path: '/clientes',
-      roles: ['Gerente', 'Administrador', 'Cliente'] 
-    },
-    { 
-      text: 'Sucursales', 
-      icon: <SucursalIcon />, 
-      path: '/sucursales',
-      roles: ['Gerente', 'Administrador', 'Cliente'] 
-    },
-    { 
-      text: 'Sierras', 
-      icon: <SierraIcon />, 
-      path: '/sierras',
-      roles: ['Gerente', 'Administrador', 'Cliente'] 
-    },
-    { 
-      text: 'Afilados', 
-      icon: <AfiladoIcon />, 
-      path: '/afilados',
-      roles: ['Gerente', 'Administrador', 'Cliente'] 
-    },
-    { 
-      text: 'Catálogos',
-      icon: <CatalogIcon />,
-      submenu: true,
-      roles: ['Gerente', 'Administrador'],
-      items: [
-        { text: 'Tipos de Sierra', path: '/catalogos/tipos-sierra' },
-        { text: 'Tipos de Afilado', path: '/catalogos/tipos-afilado' },
-        { text: 'Estados de Sierra', path: '/catalogos/estados-sierra' }
-      ]
-    },
-    { 
-      text: 'Reportes',
-      icon: <ReportIcon />,
-      submenu: true,
-      roles: ['Gerente', 'Administrador'],
-      items: [
-        { text: 'Afilados por Cliente', path: '/reportes/afilados-cliente' },
-        { text: 'Afilados por Sucursal', path: '/reportes/afilados-sucursal' },
-        { text: 'Historial de Sierras', path: '/reportes/historial-sierras' }
-      ]
-    }
-  ];
+// Actualización de la sección menuItems en MainLayout.jsx
+const menuItems = [
+  { 
+    text: 'Dashboard', 
+    icon: <DashboardIcon />, 
+    path: '/dashboard',
+    roles: ['Gerente', 'Administrador', 'Cliente'] 
+  },
+  { 
+    text: 'Usuarios', 
+    icon: <PersonIcon />, 
+    path: '/usuarios',
+    roles: ['Gerente'] // Restringido sólo a Gerente
+  },
+  { 
+    text: 'Clientes', 
+    icon: <BusinessIcon />, 
+    path: '/clientes',
+    roles: ['Gerente', 'Administrador'] // Accesible para Gerente y Administrador
+  },
+  { 
+    text: 'Sucursales', 
+    icon: <SucursalIcon />, 
+    path: '/sucursales',
+    roles: ['Gerente', 'Administrador'] // Accesible para Gerente y Administrador
+  },
+  { 
+    text: 'Sierras', 
+    icon: <SierraIcon />, 
+    path: '/sierras',
+    roles: ['Gerente', 'Administrador'] // Accesible para Gerente y Administrador
+  },
+  { 
+    text: 'Afilados', 
+    icon: <AfiladoIcon />, 
+    path: '/afilados',
+    roles: ['Gerente', 'Administrador'] // Accesible para Gerente y Administrador
+  },
+  { 
+    text: 'Catálogos',
+    icon: <CatalogIcon />,
+    submenu: true,
+    roles: ['Gerente', 'Administrador'], // Accesible para Gerente y Administrador
+    items: [
+      { text: 'Tipos de Sierra', path: '/catalogos/tipos-sierra' },
+      { text: 'Tipos de Afilado', path: '/catalogos/tipos-afilado' },
+      { text: 'Estados de Sierra', path: '/catalogos/estados-sierra' }
+    ]
+  },
+  { 
+    text: 'Reportes',
+    icon: <ReportIcon />,
+    submenu: true,
+    roles: ['Gerente', 'Administrador'], // Accesible para Gerente y Administrador
+    items: [
+      { text: 'Afilados por Cliente', path: '/reportes/afilados-cliente' },
+      { text: 'Afilados por Sucursal', path: '/reportes/afilados-sucursal' },
+      { text: 'Historial de Sierras', path: '/reportes/historial-sierras' }
+    ]
+  },
+  // Opciones específicas para Clientes
+  { 
+    text: 'Mis Sierras', 
+    icon: <SierraIcon />, 
+    path: '/mis-sierras',
+    roles: ['Cliente'] // Sólo visible para Clientes
+  },
+  { 
+    text: 'Mis Afilados', 
+    icon: <AfiladoIcon />, 
+    path: '/mis-afilados',
+    roles: ['Cliente'] // Sólo visible para Clientes
+  },
+  { 
+    text: 'Mis Sucursales', 
+    icon: <SucursalIcon />, 
+    path: '/mis-sucursales',
+    roles: ['Cliente'] // Sólo visible para Clientes
+  },
+  { 
+    text: 'Mis Reportes', 
+    icon: <ReportIcon />, 
+    path: '/mis-reportes',
+    roles: ['Cliente'] // Sólo visible para Clientes
+  }
+];
 
   // Filtrar menú según rol del usuario
   const filteredMenuItems = menuItems.filter(

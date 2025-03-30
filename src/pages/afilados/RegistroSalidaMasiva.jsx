@@ -38,7 +38,8 @@ import {
   CheckCircleOutline as CheckCircleIcon,
   ContentCut as SierraIcon,
   Error as ErrorIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import sierraService from '../../services/sierraService';
@@ -85,26 +86,91 @@ const RegistroSalidaMasiva = () => {
     cargarClientes();
   }, []);
 
+  // Función para normalizar el código de sierra (eliminar espacios y caracteres especiales)
+  const normalizarCodigo = (codigo) => {
+    if (!codigo) return '';
+    
+    // Convertir a string y eliminar espacios
+    let normalizado = String(codigo).trim();
+    
+    // Eliminar todos los caracteres que no sean números o letras
+    normalizado = normalizado.replace(/[^\w\d]/g, '');
+    
+    // Convertir letras a mayúsculas para coincidencia uniforme
+    normalizado = normalizado.toUpperCase();
+    
+    return normalizado;
+  };
+
+  // Limpiar mensaje de error o éxito después de 5 segundos
+  useEffect(() => {
+    let timer;
+    if (error || success) {
+      timer = setTimeout(() => {
+        if (error) setError(null);
+        if (success) setSuccess('');
+      }, 5000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [error, success]);
+
   // Manejar escaneo de código
   const handleBuscarSierra = async () => {
     if (!codigoSierra) return;
+    
+    const codigoNormalizado = normalizarCodigo(codigoSierra);
+    if (!codigoNormalizado) return;
     
     setLoading(true);
     setError(null);
     setSuccess('');
     
     try {
-      // Buscar la sierra por código
-      const sierraResponse = await sierraService.searchSierraByCodigo(codigoSierra);
+      // Estrategia de búsqueda mejorada
+      let sierraResponse;
+      let sierra = null;
       
+      // 1. Intentar búsqueda directa con el código normalizado
+      sierraResponse = await sierraService.searchSierraByCodigo(codigoNormalizado);
+      
+      // 2. Si no se encuentra, intentar con el código original
       if (!sierraResponse.success) {
+        sierraResponse = await sierraService.searchSierraByCodigo(codigoSierra);
+      }
+      
+      // 3. Si aún no hay éxito, intentar búsqueda alternativa
+      if (!sierraResponse.success) {
+        try {
+          // Esta opción requiere implementar getAllSierras en sierraService
+          const allSierrasResponse = await sierraService.getAllSierras();
+          
+          if (allSierrasResponse.success) {
+            // Buscar una sierra cuyo código normalizado coincida
+            const sierraEncontrada = allSierrasResponse.data.find(s => {
+              const sierraCodigo = s.codigo_barra || s.codigo;
+              return normalizarCodigo(sierraCodigo) === codigoNormalizado;
+            });
+            
+            if (sierraEncontrada) {
+              sierra = sierraEncontrada;
+              console.log("Sierra encontrada usando coincidencia alternativa:", sierraEncontrada);
+            }
+          }
+        } catch (err) {
+          console.error("Error en búsqueda alternativa:", err);
+        }
+      } else {
+        sierra = sierraResponse.data;
+      }
+      
+      if (!sierra) {
         setError(`Sierra no encontrada: ${codigoSierra}`);
         setCodigoSierra('');
         if (inputRef.current) inputRef.current.focus();
         return;
       }
-      
-      const sierra = sierraResponse.data;
       
       // Buscar afilados pendientes para esta sierra
       const afiladosResponse = await afiladoService.getAfiladosBySierra(sierra.id);
@@ -139,6 +205,7 @@ const RegistroSalidaMasiva = () => {
       // Añadir el afilado pendiente a la lista
       const nuevoAfilado = {
         ...pendientes[0],
+        sierra_id: sierra.id,
         sierra_codigo: sierra.codigo_barra || sierra.codigo,
         sierra_tipo: sierra.tipos_sierra?.nombre || 'No especificado',
         cliente_nombre: clientesMap[sierra.sucursales?.cliente_id] || 'Cliente no especificado',
@@ -191,8 +258,6 @@ const RegistroSalidaMasiva = () => {
     
     try {
       // Endpoint que vamos a usar: procesar todas las sierras en un solo request (más eficiente)
-      // Si prefieres procesar una por una, cambia este código para iterar sobre sierrasEscaneadas
-      
       const afiladoIds = sierrasEscaneadas.map(afilado => afilado.id);
       
       // Este endpoint debería ser implementado en tu backend
@@ -216,6 +281,14 @@ const RegistroSalidaMasiva = () => {
   const handleClearList = () => {
     if (window.confirm('¿Está seguro de que desea limpiar la lista?')) {
       setSierrasEscaneadas([]);
+    }
+  };
+
+  // Limpiar campo de código
+  const handleLimpiarCodigo = () => {
+    setCodigoSierra('');
+    if (inputRef.current) {
+      inputRef.current.focus();
     }
   };
 
@@ -259,6 +332,16 @@ const RegistroSalidaMasiva = () => {
               severity="error" 
               sx={{ mb: 2 }}
               onClose={() => setError(null)}
+              action={
+                <IconButton
+                  aria-label="close"
+                  color="inherit"
+                  size="small"
+                  onClick={() => setError(null)}
+                >
+                  <CloseIcon fontSize="inherit" />
+                </IconButton>
+              }
             >
               {error}
             </Alert>
@@ -269,6 +352,16 @@ const RegistroSalidaMasiva = () => {
               severity="success" 
               sx={{ mb: 2 }}
               onClose={() => setSuccess('')}
+              action={
+                <IconButton
+                  aria-label="close"
+                  color="inherit"
+                  size="small"
+                  onClick={() => setSuccess('')}
+                >
+                  <CloseIcon fontSize="inherit" />
+                </IconButton>
+              }
             >
               {success}
             </Alert>
@@ -291,6 +384,13 @@ const RegistroSalidaMasiva = () => {
                     <QrCodeIcon />
                   </InputAdornment>
                 ),
+                endAdornment: codigoSierra ? (
+                  <InputAdornment position="end">
+                    <IconButton onClick={handleLimpiarCodigo} edge="end">
+                      <DeleteIcon />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null
               }}
               disabled={loading || processingAll}
             />
@@ -316,7 +416,13 @@ const RegistroSalidaMasiva = () => {
       <Card>
         <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">
-            Sierras para Registrar Salida ({sierrasEscaneadas.length})
+            Sierras para Registrar Salida 
+            <Chip 
+              label={sierrasEscaneadas.length} 
+              color={sierrasEscaneadas.length > 0 ? "primary" : "default"}
+              size="small" 
+              sx={{ ml: 1 }}
+            />
           </Typography>
           <Box>
             <Button 
@@ -396,6 +502,7 @@ const RegistroSalidaMasiva = () => {
                         color="error" 
                         onClick={() => handleRemoveSierra(afilado.id)}
                         disabled={processingAll}
+                        size="small"
                       >
                         <DeleteIcon />
                       </IconButton>

@@ -329,14 +329,7 @@ const AfiladoList = () => {
               Escanear Sierra
             </Button>
             
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={() => navigate('/afilados/nuevo')}
-            >
-              Nuevo Afilado
-            </Button>
+
           </>
         )}
       </Box>

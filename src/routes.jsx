@@ -9,7 +9,7 @@ import ReportesRouter from './pages/reportes/ReportesRouter';
 import NotFound from './pages/common/NotFound';
 import AccessDenied from './pages/common/AccessDenied';
 
-// Páginas de usuarios
+// Páginas de usuarios (solo Gerente)
 import UserList from './pages/usuarios/UserList';
 import UserCreate from './pages/usuarios/UserCreate';
 import UserDetail from './pages/usuarios/UserDetail';
@@ -47,14 +47,16 @@ import SierraCreate from './pages/sierras/SierraCreate';
 import SierraEdit from './pages/sierras/SierraEdit';
 import ScanSierraAfilado from './pages/afilados/ScanSierraAfilado';
 
-
 // Páginas de afilados
 import AfiladoList from './pages/afilados/AfiladoList';
 import AfiladoCreate from './pages/afilados/AfiladoCreate';
 import AfiladoDetail from './pages/afilados/AfiladoDetail';
 import RegistroSalidaMasiva from './pages/afilados/RegistroSalidaMasiva';
 
-
+// Componentes temporales para perfil 
+// Estos se pueden reemplazar cuando se creen los componentes reales
+const ProfilePlaceholder = () => <div>Página de Perfil (en construcción)</div>;
+const ProfileChangePasswordPlaceholder = () => <div>Cambiar Contraseña de Perfil (en construcción)</div>;
 
 const AppRoutes = () => {
   return (
@@ -64,66 +66,78 @@ const AppRoutes = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/acceso-denegado" element={<AccessDenied />} />
         
-        {/* Rutas protegidas para todos los usuarios */}
+        {/* Rutas protegidas para todos los usuarios autenticados */}
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
-
-            {/* Rutas de clientes */}
-            <Route path="/clientes" element={<ClienteList />} />
-            <Route path="/clientes/:id" element={<ClienteDetail />} />
-            <Route path="/clientes/nuevo" element={<ClienteCreate />} />
-            <Route path="/clientes/:id/editar" element={<ClienteEdit />} />
-
-            {/* Rutas de sucursales */}
-            <Route path="/sucursales" element={<SucursalList />} />
-            <Route path="/sucursales/nueva" element={<SucursalCreate />} />
-            <Route path="/sucursales/:id" element={<SucursalDetail />} />
-            <Route path="/sucursales/:id/editar" element={<SucursalEdit />} />
-
-            {/* Rutas de sierras */}
-            <Route path="/sierras" element={<SierraList />} />
-            <Route path="/sierras/:id" element={<SierraDetail />} />
-            <Route path="/sierras/nueva" element={<SierraCreate />} />
-            <Route path="/sierras/:id/editar" element={<SierraEdit />} />
-
-            {/* Rutas de afilados */}
-            <Route path="/afilados" element={<AfiladoList />} />
-            <Route path="/afilados/nuevo" element={<AfiladoCreate />} />
-            <Route path="/afilados/:id" element={<AfiladoDetail />} />
-            <Route path="/afilados/escanear" element={<ScanSierraAfilado />} />
-            <Route path="/afilados/salida-masiva" element={<RegistroSalidaMasiva />} />
+            
+            {/* Perfil y configuración personal (todos los usuarios) */}
+            <Route path="/perfil" element={<ProfilePlaceholder />} />
+            <Route path="/perfil/cambiar-password" element={<ProfileChangePasswordPlaceholder />} />
+            <Route path="/configuracion" element={<div>Configuración</div>} />
+            <Route path="/ayuda" element={<div>Ayuda y Soporte</div>} />
           </Route>
         </Route>
-
-        {/* Rutas protegidas solo para administradores */}
-        <Route element={<ProtectedRoute requiredRoles={['Gerente', 'Administrador']} />}>
+        
+        {/* Rutas protegidas solo para Gerente - Gestión de usuarios */}
+        <Route element={<ProtectedRoute requiredRoles={['Gerente']} />}>
           <Route element={<MainLayout />}>
-            {/* Rutas para administración y gestión */}
             <Route path="/usuarios" element={<UserList />} />
             <Route path="/usuarios/nuevo" element={<UserCreate />} />
             <Route path="/usuarios/:id" element={<UserDetail />} />
             <Route path="/usuarios/:id/editar" element={<UserEdit />} />
             <Route path="/usuarios/:id/cambiar-password" element={<ChangePassword />} />
+          </Route>
+        </Route>
+        
+        {/* Rutas para Administradores y Gerentes */}
+        <Route element={<ProtectedRoute requiredRoles={['Gerente', 'Administrador']} />}>
+          <Route element={<MainLayout />}>
+            {/* Gestión general */}
+            <Route path="/clientes" element={<ClienteList />} />
+            <Route path="/clientes/:id" element={<ClienteDetail />} />
+            <Route path="/clientes/nuevo" element={<ClienteCreate />} />
+            <Route path="/clientes/:id/editar" element={<ClienteEdit />} />
+
+            <Route path="/sucursales" element={<SucursalList />} />
+            <Route path="/sucursales/nueva" element={<SucursalCreate />} />
+            <Route path="/sucursales/:id" element={<SucursalDetail />} />
+            <Route path="/sucursales/:id/editar" element={<SucursalEdit />} />
+
+            <Route path="/sierras" element={<SierraList />} />
+            <Route path="/sierras/:id" element={<SierraDetail />} />
+            <Route path="/sierras/nueva" element={<SierraCreate />} />
+            <Route path="/sierras/:id/editar" element={<SierraEdit />} />
+
+            <Route path="/afilados" element={<AfiladoList />} />
+            <Route path="/afilados/nuevo" element={<AfiladoCreate />} />
+            <Route path="/afilados/:id" element={<AfiladoDetail />} />
+            <Route path="/afilados/escanear" element={<ScanSierraAfilado />} />
+            <Route path="/afilados/salida-masiva" element={<RegistroSalidaMasiva />} />
             
-            {/* Rutas de catálogos */}
+            {/* Catálogos */}
             <Route path="/catalogos" element={<CatalogosIndex />} />
             <Route path="/catalogos/tipos-sierra" element={<TipoSierraList />} />
             <Route path="/catalogos/tipos-afilado" element={<TipoAfiladoList />} />
             <Route path="/catalogos/estados-sierra" element={<EstadoSierraList />} />
             
-            {/* Rutas de reportes */}
+            {/* Reportes */}
             <Route path="/reportes/*" element={<ReportesRouter />} />
           </Route>
         </Route>
-
-        {/* Rutas para perfil y configuración */}
-        <Route element={<ProtectedRoute />}>
+        
+        {/* Rutas específicas para Clientes (reutilizando componentes) */}
+        <Route element={<ProtectedRoute requiredRoles={['Cliente']} />}>
           <Route element={<MainLayout />}>
-            <Route path="/perfil" element={<div>Mi Perfil</div>} />
-            <Route path="/configuracion" element={<div>Configuración</div>} />
-            <Route path="/ayuda" element={<div>Ayuda y Soporte</div>} />
+            {/* Usaremos los mismos componentes pero con parámetros filtrados por cliente */}
+            <Route path="/mis-sierras" element={<SierraList clienteFilter={true} />} />
+            <Route path="/mis-sierras/:id" element={<SierraDetail />} />
+            <Route path="/mis-afilados" element={<AfiladoList clienteFilter={true} />} />
+            <Route path="/mis-afilados/:id" element={<AfiladoDetail />} />
+            <Route path="/mis-sucursales" element={<SucursalList clienteFilter={true} />} />
+            <Route path="/mis-sucursales/:id" element={<SucursalDetail />} />
+            <Route path="/mis-reportes" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Route>
 
