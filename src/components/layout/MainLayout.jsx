@@ -382,9 +382,9 @@ const menuItems = [
           alignItems: isCollapsed ? 'center' : 'flex-start',
           p: isCollapsed ? 1 : 2,
           background: darkMode 
-            ? `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${alpha(theme.palette.primary.main, 0.9)} 100%)`
-            : `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${alpha(theme.palette.primary.light, 0.9)} 100%)`,
-          color: 'primary.contrastText',
+            ? '#111111' // Negro oscuro para modo oscuro
+            : '#222222', // Negro para modo claro
+          color: 'white', // Texto en blanco
           overflow: 'hidden',
           position: 'relative'
         }}
@@ -397,6 +397,7 @@ const menuItems = [
             width: '100%',
             justifyContent: isCollapsed ? 'center' : 'space-between',
             overflow: 'hidden'  // Añadido para controlar desbordamiento
+            
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
