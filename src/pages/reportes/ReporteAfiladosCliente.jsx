@@ -99,31 +99,90 @@ const ReporteAfiladosCliente = () => {
       // Cargar datos de afilados reales
       const afiladosResponse = await afiladoService.getAllAfilados();
       if (afiladosResponse.success) {
-        // Procesar los datos para el formato que necesitamos
-        const procesados = afiladosResponse.data.map(afilado => {
-          // Calcular días entre fechas
-          const fechaCreacion = new Date(afilado.fecha_registro || afilado.created_at);
-          const fechaAfilado = new Date(afilado.fecha_afilado);
-          const dias = differenceInDays(fechaAfilado, fechaCreacion) || 0;
-          
-          return {
-            id: afilado.id,
-            sucursal: afilado.sierras?.sucursales?.nombre || 'No especificada',
-            tipo_sierra: afilado.sierras?.tipos_sierra?.nombre || 'No especificado',
-            codigo_sierra: afilado.sierras?.codigo_barra || afilado.sierras?.codigo || 'No especificado',
-            tipo_afilado: afilado.tipos_afilado?.nombre || 'No especificado',
-            estado: !!afilado.fecha_salida, // true si tiene fecha de salida (completado)
-            fecha_afilado: afilado.fecha_afilado,
-            fecha_salida: afilado.fecha_salida,
-            fecha_creacion: afilado.fecha_registro || afilado.created_at,
-            dias: dias,
-            cliente: {
-              id: afilado.sierras?.sucursales?.clientes?.id || 0,
-              razon_social: afilado.sierras?.sucursales?.clientes?.razon_social || 'No especificado'
-            }
-          };
-        });
+
+      
+
+
+
+
+// Código actualizado para usar el nuevo endpoint con fecha_registro
+const procesados = afiladosResponse.data.map(afilado => {
+  // Obtener objeto sierra
+  const sierraObj = afilado.sierras || {};
+  
+  // Ahora el nuevo endpoint debería proporcionar fecha_registro
+  const fechaRegistroSierra = sierraObj.fecha_registro;
+  
+  // Fecha de afilado
+  const fechaAfiladoStr = afilado.fecha_afilado;
+  
+  // Calcular días entre fechas
+  let dias = 0;
+  
+  if (fechaRegistroSierra && fechaAfiladoStr) {
+    try {
+      const fechaRegistro = new Date(fechaRegistroSierra);
+      const fechaAfilado = new Date(fechaAfiladoStr);
+      
+      if (!isNaN(fechaRegistro) && !isNaN(fechaAfilado)) {
+        // Calcular días transcurridos, asegurando valor no negativo
+        dias = Math.max(0, differenceInDays(fechaAfilado, fechaRegistro));
         
+        // Log opcional para verificar funcionamiento
+        console.log(`Afilado ID ${afilado.id} - Cálculo de días:`, {
+          fechaRegistro: fechaRegistro.toISOString(),
+          fechaAfilado: fechaAfilado.toISOString(),
+          dias
+        });
+      }
+    } catch (error) {
+      console.error(`Error calculando días para afilado ID ${afilado.id}:`, error);
+    }
+  } else {
+    // Fallback a created_at si por alguna razón fecha_registro no está disponible
+    const fechaAlternativa = sierraObj.created_at || afilado.created_at;
+    
+    if (fechaAlternativa && fechaAfiladoStr) {
+      try {
+        const fechaCreacion = new Date(fechaAlternativa);
+        const fechaAfilado = new Date(fechaAfiladoStr);
+        
+        if (!isNaN(fechaCreacion) && !isNaN(fechaAfilado)) {
+          dias = Math.max(0, differenceInDays(fechaAfilado, fechaCreacion));
+        }
+      } catch (error) {
+        console.error(`Error con fecha alternativa para afilado ID ${afilado.id}:`, error);
+      }
+    }
+  }
+  
+  return {
+    id: afilado.id,
+    sucursal: sierraObj.sucursales?.nombre || 'No especificada',
+    tipo_sierra: sierraObj.tipos_sierra?.nombre || 'No especificado',
+    codigo_sierra: sierraObj.codigo_barra || sierraObj.codigo || 'No especificado',
+    tipo_afilado: afilado.tipos_afilado?.nombre || 'No especificado',
+    estado: !!afilado.fecha_salida, // true si tiene fecha de salida (completado)
+    fecha_afilado: fechaAfiladoStr,
+    fecha_salida: afilado.fecha_salida,
+    fecha_creacion: fechaRegistroSierra || sierraObj.created_at || afilado.created_at || 'No disponible',
+    dias: dias,
+    cliente: {
+      id: sierraObj.sucursales?.clientes?.id || 0,
+      razon_social: sierraObj.sucursales?.clientes?.razon_social || 'No especificado'
+    }
+  };
+});
+
+
+
+
+
+
+
+
+
+
         setAfilados(procesados);
       } else {
         setError('Error al cargar los datos de afilados');

@@ -4,7 +4,6 @@ import {
   Box, 
   Card, 
   CardContent, 
-  Alert,
   Typography, 
   Button, 
   TextField, 
@@ -29,33 +28,43 @@ import {
   InputLabel,
   Breadcrumbs,
   Link as MuiLink,
+  Tabs,
+  Tab,
+  Badge,
   Switch,
   FormControlLabel,
-  Badge,
-  Tabs,
-  Tab
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle
 } from '@mui/material';
 import { 
   Add as AddIcon,
-  CheckCircleOutline as CheckCircleIcon,
   Search as SearchIcon,
   Visibility as ViewIcon,
   Edit as EditIcon,
-  CheckCircleOutline as CompletedIcon,
-  BuildCircle as AfiladoIcon,
-  CalendarToday as CalendarIcon,
-  FilterList as FilterIcon,
-  Refresh as RefreshIcon,
-  Warning as PendingIcon,
+  Delete as DeleteIcon,
   ContentCut as SierraIcon,
+  Business as BusinessIcon,
+  StorefrontOutlined as SucursalIcon,
+  Refresh as RefreshIcon,
+  FilterList as FilterIcon,
+  BuildCircle as AfiladoIcon,
+  History as HistoryIcon,
+  LocalShipping as ShippingIcon,
+  Check as CheckIcon,
+  CheckCircle as CheckCircleIcon,
   QrCode as QrCodeIcon
 } from '@mui/icons-material';
+import { Checkbox } from '@mui/material';
 import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import afiladoService from '../../services/afiladoService';
 import clienteService from '../../services/clienteService';
 import sucursalService from '../../services/sucursalService';
 import catalogoService from '../../services/catalogoService';
+import sierraService from '../../services/sierraService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -76,7 +85,7 @@ const TabPanel = (props) => {
   );
 };
 
-const AfiladoList = () => {
+const AfiladoList = ({ clienteFilter = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -84,21 +93,24 @@ const AfiladoList = () => {
   
   const [afilados, setAfilados] = useState([]);
   const [clientes, setClientes] = useState([]);
-  const [clientesMap, setClientesMap] = useState({}); // Mapa de cliente_id -> razon_social
   const [sucursales, setSucursales] = useState([]);
+  const [sierras, setSierras] = useState([]);
   const [tiposAfilado, setTiposAfilado] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tabValue, setTabValue] = useState(0);
-
+  const [selectedAfilados, setSelectedAfilados] = useState([]);
+  const [confirmRegistroSalida, setConfirmRegistroSalida] = useState(false);
+  
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
-  const [clienteFilter, setClienteFilter] = useState('');
+  const [clienteFilterValue, setClienteFilterValue] = useState('');
   const [sucursalFilter, setSucursalFilter] = useState('');
+  const [sierraFilter, setSierraFilter] = useState('');
   const [tipoAfiladoFilter, setTipoAfiladoFilter] = useState('');
-  const [showPendientesOnly, setShowPendientesOnly] = useState(
-    searchParams.get('pendientes') === 'true'
-  );
+  const [estadoFilter, setEstadoFilter] = useState('');
+  const [fechaInicioFilter, setFechaInicioFilter] = useState('');
+  const [fechaFinFilter, setFechaFinFilter] = useState('');
   
   // Paginación
   const [page, setPage] = useState(0);
@@ -106,18 +118,11 @@ const AfiladoList = () => {
 
   // Estado para manejar si el usuario puede agregar/editar afilados
   const canManageAfilados = user?.rol === 'Gerente' || user?.rol === 'Administrador';
-  const pendientesParam = searchParams.get('pendientes');
   const sierraParam = searchParams.get('sierra');
+  const pendientesParam = searchParams.get('pendientes') === 'true';
+  const clienteParam = searchParams.get('cliente');
 
-  useEffect(() => {
-    // Si hay un parámetro de pendientes, establecer la tab correspondiente
-    if (pendientesParam === 'true') {
-      setTabValue(1); // Tab de pendientes
-      setShowPendientesOnly(true);
-    } else if (sierraParam) {
-      setTabValue(2); // Tab de sierras
-    }
-  }, [pendientesParam, sierraParam]);
+  const [clientesMap, setClientesMap] = useState({});
 
   // Formatear fecha
   const formatDate = (dateString) => {
@@ -129,74 +134,127 @@ const AfiladoList = () => {
     }
   };
 
+  // Función para cargar los catálogos
+  const loadCatalogos = async () => {
+    try {
+      // Cargar tipos de afilado
+      const tiposAfiladoResponse = await catalogoService.getTiposAfilado();
+      if (tiposAfiladoResponse.success) {
+        setTiposAfilado(tiposAfiladoResponse.data);
+      }
+
+      // Cargar clientes para filtros
+      const clientesResponse = await clienteService.getAllClientes();
+      if (clientesResponse.success) {
+        setClientes(clientesResponse.data);
+        
+        // Crear mapa de clientes para referencias rápidas
+        const clientesMapeados = {};
+        clientesResponse.data.forEach(cliente => {
+          clientesMapeados[cliente.id] = cliente.razon_social;
+        });
+        setClientesMap(clientesMapeados);
+        
+        // Si estamos en modo clienteFilter, establecer el filtro al ID del cliente actual
+        if (clienteFilter && user?.cliente_id) {
+          setClienteFilterValue(user.cliente_id.toString());
+          loadSucursalesByCliente(user.cliente_id);
+          loadSierrasByCliente(user.cliente_id);
+        }
+        // Si hay un cliente seleccionado en la URL, cargar sus sucursales y sierras
+        else if (clienteParam) {
+          loadSucursalesByCliente(clienteParam);
+          loadSierrasByCliente(clienteParam);
+          setClienteFilterValue(clienteParam);
+        } else {
+          // Cargar todas las sucursales si no hay cliente seleccionado
+          const sucursalesResponse = await sucursalService.getAllSucursales();
+          if (sucursalesResponse.success) {
+            setSucursales(sucursalesResponse.data);
+          }
+          
+          const sierrasResponse = await sierraService.getAllSierras();
+          if (sierrasResponse.success) {
+            setSierras(sierrasResponse.data);
+          }
+        }
+      }
+      
+      // Si hay una sierra en la URL, establecerla como filtro
+      if (sierraParam) {
+        setSierraFilter(sierraParam);
+      }
+      
+      // Si estamos filtrando por pendientes, establecer el filtro de estado
+      if (pendientesParam) {
+        setEstadoFilter('pendiente');
+        setTabValue(1); // Cambiar a la pestaña de pendientes
+      }
+    } catch (err) {
+      console.error('Error al cargar catálogos:', err);
+    }
+  };
+
+  // Función para cargar sucursales por cliente
+  const loadSucursalesByCliente = async (clienteId) => {
+    try {
+      const response = await sucursalService.getSucursalesByCliente(clienteId);
+      if (response.success) {
+        setSucursales(response.data);
+      }
+    } catch (err) {
+      console.error('Error al cargar sucursales por cliente:', err);
+    }
+  };
+
+  // Función para cargar sierras por cliente
+  const loadSierrasByCliente = async (clienteId) => {
+    try {
+      const response = await sierraService.getSierrasByCliente(clienteId);
+      if (response.success) {
+        setSierras(response.data);
+      }
+    } catch (err) {
+      console.error('Error al cargar sierras por cliente:', err);
+    }
+  };
+
   // Función para cargar los datos
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Cargar los clientes primero para tener el mapeo disponible
-      try {
-        const clientesResponse = await clienteService.getAllClientes();
-        if (clientesResponse.success) {
-          // Crear un mapa de id -> razon_social para acceso rápido
-          const clientesMapeados = {};
-          clientesResponse.data.forEach(cliente => {
-            clientesMapeados[cliente.id] = cliente.razon_social;
-          });
-          setClientes(clientesResponse.data);
-          setClientesMap(clientesMapeados);
-          console.log('Mapa de clientes creado:', clientesMapeados);
-        }
-      } catch (error) {
-        console.error('Error al cargar clientes:', error);
-      }
+      // Cargar catálogos primero para tener los datos disponibles
+      await loadCatalogos();
       
-      // Cargar afilados según la pestaña actual y el rol del usuario
+      // Cargar afilados según los parámetros
       let afiladosResponse;
       
-      if (user?.rol === 'Gerente' || user?.rol === 'Administrador') {
-        // Si es gerente o admin, usar el endpoint para obtener todos los afilados
-        afiladosResponse = await afiladoService.getAllAfilados();
-      } else if (tabValue === 1 || showPendientesOnly) {
-        // Pendientes
-        afiladosResponse = await afiladoService.getAfiladosPendientes();
-      } else if (tabValue === 2 && sierraParam) {
-        // Afilados de una sierra específica
+      if (clienteFilter && user?.cliente_id) {
+        // Filtrar por el cliente del usuario actual
+        afiladosResponse = await afiladoService.getAfiladosByCliente(user.cliente_id);
+      } else if (sierraParam) {
+        // Filtrar por sierra específica
         afiladosResponse = await afiladoService.getAfiladosBySierra(sierraParam);
+      } else if (clienteParam) {
+        // Filtrar por cliente específico
+        afiladosResponse = await afiladoService.getAfiladosByCliente(clienteParam);
+      } else if (pendientesParam) {
+        // Filtrar solo afilados pendientes
+        afiladosResponse = await afiladoService.getAfiladosPendientes();
       } else {
-        // Para otros usuarios, filtrar por cliente
-        afiladosResponse = await afiladoService.getAfiladosByCliente(user?.cliente_id || '');
+        // Cargar todos los afilados
+        afiladosResponse = await afiladoService.getAllAfilados();
       }
-  
+
       if (afiladosResponse.success) {
-        console.log('Datos de afilados cargados:', afiladosResponse.data);
         setAfilados(afiladosResponse.data);
       } else {
         setError('Error al cargar los afilados');
       }
-      
-      // Cargar catálogos
-      try {
-        // Cargar tipos de afilado para filtros
-        const tiposAfiladoResponse = await catalogoService.getTiposAfilado();
-        if (tiposAfiladoResponse.success) {
-          setTiposAfilado(tiposAfiladoResponse.data);
-        }
-
-        // Si hay un cliente seleccionado, cargar sus sucursales
-        if (clienteFilter) {
-          const sucursalesResponse = await sucursalService.getSucursalesByCliente(clienteFilter);
-          if (sucursalesResponse.success) {
-            setSucursales(sucursalesResponse.data);
-          }
-        }
-      } catch (error) {
-        console.error('Error al cargar catálogos:', error);
-        // No bloqueamos la carga principal por errores en catálogos
-      }
     } catch (err) {
-      console.error('Error al cargar afilados:', err);
-      setError('Ocurrió un error al cargar los datos. Por favor, inténtelo de nuevo.');
+      console.error('Error al obtener datos:', err);
+      setError('Error al cargar los datos. Por favor, inténtelo de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -204,18 +262,29 @@ const AfiladoList = () => {
 
   useEffect(() => {
     loadData();
-  }, [tabValue, sierraParam]);
+  }, [sierraParam, clienteParam, pendientesParam, clienteFilter, user]);
+
+  // Efectos para cargar datos relacionados cuando cambian los filtros
+  useEffect(() => {
+    if (clienteFilterValue) {
+      loadSucursalesByCliente(clienteFilterValue);
+      loadSierrasByCliente(clienteFilterValue);
+    }
+  }, [clienteFilterValue]);
 
   // Función para manejar el cambio de tab
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
-    // Resetear algunos filtros al cambiar de tab
-    if (newValue === 1) {
-      setShowPendientesOnly(true);
-    } else {
-      setShowPendientesOnly(false);
-    }
     setPage(0);
+    
+    // Actualizar el filtro de estado según la pestaña seleccionada
+    if (newValue === 1) { // Pestaña de pendientes
+      setEstadoFilter('pendiente');
+    } else if (newValue === 2) { // Pestaña de completados
+      setEstadoFilter('completado');
+    } else {
+      setEstadoFilter(''); // Todas
+    }
   };
 
   // Función para manejar el cambio de página
@@ -235,55 +304,101 @@ const AfiladoList = () => {
     const searchFields = [
       afilado.sierras?.codigo_barra || '',
       afilado.sierras?.codigo || '',
-      afilado.sierras?.tipos_sierra?.nombre || '',
       afilado.tipos_afilado?.nombre || '',
-      afilado.usuarios?.nombre || '',
       afilado.sierras?.sucursales?.nombre || '',
-      clientesMap[afilado.sierras?.sucursales?.cliente_id] || '',
+      afilado.sierras?.sucursales?.clientes?.razon_social || '',
       afilado.observaciones || ''
     ].join(' ').toLowerCase();
     
     const matchesSearch = searchFields.includes(searchTerm.toLowerCase());
     
-    // Filtrar por cliente
-    const matchesCliente = clienteFilter === '' || 
-      afilado.sierras?.sucursales?.cliente_id === parseInt(clienteFilter);
+    // Filtrar por cliente (siempre se aplica si estamos en modo clienteFilter)
+    const matchesCliente = clienteFilter ? true : 
+                          (clienteFilterValue === '' || 
+                          afilado.sierras?.sucursales?.cliente_id === parseInt(clienteFilterValue));
     
     // Filtrar por sucursal
     const matchesSucursal = sucursalFilter === '' || 
       afilado.sierras?.sucursal_id === parseInt(sucursalFilter);
     
+    // Filtrar por sierra
+    const matchesSierra = sierraFilter === '' || 
+      afilado.sierra_id === parseInt(sierraFilter);
+    
     // Filtrar por tipo de afilado
     const matchesTipoAfilado = tipoAfiladoFilter === '' || 
       afilado.tipo_afilado_id === parseInt(tipoAfiladoFilter);
     
-    // Filtrar por pendientes/completados
-    const matchesPendientes = !showPendientesOnly || afilado.fecha_salida === null;
+    // Filtrar por estado (pendiente o completado)
+    const matchesEstado = estadoFilter === '' || 
+      (estadoFilter === 'pendiente' && !afilado.fecha_salida) ||
+      (estadoFilter === 'completado' && afilado.fecha_salida);
+    
+    // Filtrar por fecha de inicio
+    const matchesFechaInicio = !fechaInicioFilter || 
+      (afilado.fecha_afilado && new Date(afilado.fecha_afilado) >= new Date(fechaInicioFilter));
+    
+    // Filtrar por fecha de fin
+    const matchesFechaFin = !fechaFinFilter || 
+      (afilado.fecha_afilado && new Date(afilado.fecha_afilado) <= new Date(fechaFinFilter));
     
     return matchesSearch && matchesCliente && matchesSucursal && 
-           matchesTipoAfilado && matchesPendientes;
+           matchesSierra && matchesTipoAfilado && matchesEstado &&
+           matchesFechaInicio && matchesFechaFin;
   });
 
-  // Función para manejar el registro de salida de un afilado
-  const handleRegistrarSalida = async (id) => {
-    if (window.confirm('¿Confirmar la salida de este afilado?')) {
-      try {
-        const response = await afiladoService.registrarSalida(id);
-        if (response.success) {
-          loadData(); // Recargar los datos
-        } else {
-          alert('Error al registrar la salida');
-        }
-      } catch (err) {
-        console.error('Error al registrar salida:', err);
-        alert('Error al registrar la salida. Por favor, inténtelo de nuevo.');
+  // Manejar la selección de afilados
+  const handleSelectAfilado = (afiladoId) => {
+    setSelectedAfilados(prev => {
+      if (prev.includes(afiladoId)) {
+        return prev.filter(id => id !== afiladoId);
+      } else {
+        return [...prev, afiladoId];
       }
-    }
+    });
   };
 
-  // Función para ir a la página de escaneo de sierra
-  const handleIrAEscaneo = () => {
-    navigate('/afilados/escanear');
+  // Manejar el registro de salida masiva
+  const handleRegistroSalidaMasiva = async () => {
+    if (selectedAfilados.length === 0) return;
+    
+    setConfirmRegistroSalida(true);
+  };
+
+  // Confirmar registro de salida masiva
+  const confirmRegistroSalidaMasiva = async () => {
+    setConfirmRegistroSalida(false);
+    
+    try {
+      const response = await afiladoService.registrarSalidaMasiva(selectedAfilados);
+      if (response.success) {
+        // Limpiar selección y recargar datos
+        setSelectedAfilados([]);
+        loadData();
+      } else {
+        console.error('Error al registrar salida masiva:', response.error);
+        alert('Error al registrar salida: ' + response.error);
+      }
+    } catch (err) {
+      console.error('Error al registrar salida masiva:', err);
+      alert('Error al registrar salida. Por favor, inténtelo de nuevo.');
+    }
+  };
+  
+  // Registrar la salida de un único afilado
+  const handleRegistroSalida = async (afiladoId) => {
+    try {
+      const response = await afiladoService.registrarSalida(afiladoId);
+      if (response.success) {
+        loadData(); // Recargar datos
+      } else {
+        console.error('Error al registrar salida:', response.error);
+        alert('Error al registrar salida: ' + response.error);
+      }
+    } catch (err) {
+      console.error('Error al registrar salida:', err);
+      alert('Error al registrar salida. Por favor, inténtelo de nuevo.');
+    }
   };
 
   return (
@@ -293,45 +408,93 @@ const AfiladoList = () => {
         <MuiLink component={Link} to="/" color="inherit">
           Dashboard
         </MuiLink>
-        <Typography color="text.primary">Afilados</Typography>
+        {clienteParam && !clienteFilter && (
+          <MuiLink component={Link} to={`/clientes/${clienteParam}`} color="inherit">
+            {clientes.find(c => c.id === parseInt(clienteParam))?.razon_social || 'Cliente'}
+          </MuiLink>
+        )}
+        {sierraParam && (
+          <MuiLink 
+            component={Link} 
+            to={clienteFilter ? `/mis-sierras/${sierraParam}` : `/sierras/${sierraParam}`} 
+            color="inherit"
+          >
+            {sierras.find(s => s.id === parseInt(sierraParam))?.codigo_barra || 'Sierra'}
+          </MuiLink>
+        )}
+        <Typography color="text.primary">{clienteFilter ? "Mis Afilados" : "Afilados"}</Typography>
       </Breadcrumbs>
 
       {/* Encabezado y acciones */}
-      <Box>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={loadData}
-          sx={{ mr: 1 }}
-        >
-          Actualizar
-        </Button>
-        
-        {canManageAfilados && (
-          <>
-            <Button
-              variant="outlined"
-              color="success"
-              startIcon={<CheckCircleIcon />}
-              onClick={() => navigate('/afilados/salida-masiva')}
-              sx={{ mr: 1 }}
-            >
-              Registro Masivo de Salidas
-            </Button>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4" component="h1" fontWeight="bold">
+          {clienteFilter ? "Mis Afilados" : "Afilados"}
+          {clienteParam && !clienteFilter && (
+            <Typography variant="subtitle1" color="text.secondary">
+              Cliente: {clientes.find(c => c.id === parseInt(clienteParam))?.razon_social}
+            </Typography>
+          )}
+          {sierraParam && (
+            <Typography variant="subtitle1" color="text.secondary">
+              Sierra: {sierras.find(s => s.id === parseInt(sierraParam))?.codigo_barra}
+            </Typography>
+          )}
+          {clienteFilter && user?.cliente_id && clientes.find(c => c.id === user.cliente_id) && (
+            <Typography variant="subtitle1" color="text.secondary">
+              Cliente: {clientes.find(c => c.id === user.cliente_id)?.razon_social || 'Mi Cliente'}
+            </Typography>
+          )}
+        </Typography>
+        <Box>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={loadData}
+            sx={{ mr: 1 }}
+          >
+            Actualizar
+          </Button>
           
+          {/* Botones según permisos */}
+          {canManageAfilados && (
+            <>
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<CheckCircleIcon />}
+                onClick={() => navigate('/afilados/salida-masiva')}
+                sx={{ mr: 1 }}
+              >
+                Registro Masivo de Salidas
+              </Button>
+            </>
+          )}
+          
+          {/* Botón para escanear sierra (todos los usuarios autorizados) */}
+          {(canManageAfilados || (clienteFilter && user?.rol === 'Cliente')) && (
             <Button
-              variant="outlined"
-              color="secondary"
+              variant="contained"
+              color="primary"
               startIcon={<QrCodeIcon />}
-              onClick={() => navigate('/afilados/escanear')}
-              sx={{ mr: 1 }}
+              onClick={() => navigate(clienteFilter ? '/mis-afilados/escanear' : '/afilados/escanear')}
             >
               Escanear Sierra
             </Button>
-            
-
-          </>
-        )}
+          )}
+          
+          {/* Botón de registro masivo para afilados seleccionados */}
+          {selectedAfilados.length > 0 && canManageAfilados && (
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<CheckCircleIcon />}
+              onClick={handleRegistroSalidaMasiva}
+              sx={{ ml: 1 }}
+            >
+              Registrar Salida ({selectedAfilados.length})
+            </Button>
+          )}
+        </Box>
       </Box>
 
       {/* Pestañas */}
@@ -346,27 +509,36 @@ const AfiladoList = () => {
           <Tab label="Todos los Afilados" id="afilado-tab-0" />
           <Tab 
             label={
-              <Badge badgeContent={afilados.filter(a => !a.fecha_salida).length} color="error">
+              <Badge 
+                badgeContent={afilados.filter(a => !a.fecha_salida).length} 
+                color="warning"
+              >
                 Pendientes
               </Badge>
             } 
             id="afilado-tab-1"
           />
-          {sierraParam && (
-            <Tab 
-              label={`Sierra ${afilados[0]?.sierras?.codigo_barra || afilados[0]?.sierras?.codigo || sierraParam}`} 
-              id="afilado-tab-2"
-            />
-          )}
+          <Tab 
+            label={
+              <Badge 
+                badgeContent={afilados.filter(a => a.fecha_salida).length} 
+                color="success"
+              >
+                Completados
+              </Badge>
+            } 
+            id="afilado-tab-2"
+          />
         </Tabs>
       </Box>
 
       {/* Filtros y búsqueda */}
-      <TabPanel value={tabValue} index={0}>
+      <TabPanel value={tabValue} index={tabValue}>
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={4}>
+              {/* Campo de búsqueda - más ancho en modo cliente */}
+              <Grid item xs={12} md={clienteFilter ? 6 : 3}>
                 <TextField
                   fullWidth
                   placeholder="Buscar afilados..."
@@ -384,77 +556,139 @@ const AfiladoList = () => {
                 />
               </Grid>
 
-              <Grid item xs={12} md={3}>
-                <FormControl fullWidth size="small">
-                  <InputLabel id="cliente-filter-label">Cliente</InputLabel>
-                  <Select
-                    labelId="cliente-filter-label"
-                    value={clienteFilter}
-                    onChange={(e) => setClienteFilter(e.target.value)}
-                    label="Cliente"
-                  >
-                    <MenuItem value="">Todos los clientes</MenuItem>
-                    {clientes.map((cliente) => (
-                      <MenuItem key={cliente.id} value={cliente.id}>
-                        {cliente.razon_social}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
+              {/* Ocultar filtros de cliente y sucursal si estamos en modo cliente */}
+              {!clienteFilter && (
+                <>
+                  <Grid item xs={12} md={3}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="cliente-filter-label">Cliente</InputLabel>
+                      <Select
+                        labelId="cliente-filter-label"
+                        value={clienteFilterValue}
+                        onChange={(e) => {
+                          setClienteFilterValue(e.target.value);
+                          setSucursalFilter(''); // Resetear sucursal al cambiar cliente
+                          setSierraFilter(''); // Resetear sierra al cambiar cliente
+                        }}
+                        label="Cliente"
+                      >
+                        <MenuItem value="">Todos los clientes</MenuItem>
+                        {clientes.map((cliente) => (
+                          <MenuItem key={cliente.id} value={cliente.id.toString()}>
+                            {cliente.razon_social}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
 
-              <Grid item xs={12} md={3}>
+                  <Grid item xs={12} md={3}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="sucursal-filter-label">Sucursal</InputLabel>
+                      <Select
+                        labelId="sucursal-filter-label"
+                        value={sucursalFilter}
+                        onChange={(e) => {
+                          setSucursalFilter(e.target.value);
+                          // Actualizar sierras disponibles si cambia la sucursal
+                        }}
+                        label="Sucursal"
+                        disabled={!clienteFilterValue}
+                      >
+                        <MenuItem value="">Todas las sucursales</MenuItem>
+                        {sucursales
+                          .filter(sucursal => !clienteFilterValue || 
+                            sucursal.cliente_id === parseInt(clienteFilterValue))
+                          .map((sucursal) => (
+                            <MenuItem key={sucursal.id} value={sucursal.id.toString()}>
+                              {sucursal.nombre}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </>
+              )}
+
+              {/* Filtro de sierra */}
+              <Grid item xs={12} md={clienteFilter ? 6 : 3}>
                 <FormControl fullWidth size="small">
-                  <InputLabel id="sucursal-filter-label">Sucursal</InputLabel>
+                  <InputLabel id="sierra-filter-label">Sierra</InputLabel>
                   <Select
-                    labelId="sucursal-filter-label"
-                    value={sucursalFilter}
-                    onChange={(e) => setSucursalFilter(e.target.value)}
-                    label="Sucursal"
-                    disabled={!clienteFilter}
+                    labelId="sierra-filter-label"
+                    value={sierraFilter}
+                    onChange={(e) => setSierraFilter(e.target.value)}
+                    label="Sierra"
+                    disabled={!clienteFilterValue && !clienteFilter}
                   >
-                    <MenuItem value="">Todas las sucursales</MenuItem>
-                    {sucursales
-                      .filter(sucursal => !clienteFilter || sucursal.cliente_id === parseInt(clienteFilter))
-                      .map((sucursal) => (
-                        <MenuItem key={sucursal.id} value={sucursal.id}>
-                          {sucursal.nombre}
+                    <MenuItem value="">Todas las sierras</MenuItem>
+                    {sierras
+                      .filter(sierra => 
+                        clienteFilter ? true : 
+                        (!clienteFilterValue || 
+                          sierra.sucursales?.cliente_id === parseInt(clienteFilterValue))
+                      )
+                      .filter(sierra => 
+                        !sucursalFilter || 
+                        sierra.sucursal_id === parseInt(sucursalFilter)
+                      )
+                      .map((sierra) => (
+                        <MenuItem key={sierra.id} value={sierra.id.toString()}>
+                          {sierra.codigo_barra || sierra.codigo}
                         </MenuItem>
                       ))}
                   </Select>
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12} md={2}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={showPendientesOnly}
-                      onChange={(e) => setShowPendientesOnly(e.target.checked)}
-                      color="primary"
-                    />
-                  }
-                  label="Solo pendientes"
+              {/* Filtro de tipo de afilado */}
+              <Grid item xs={12} md={clienteFilter ? 6 : 3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="tipo-afilado-filter-label">Tipo de Afilado</InputLabel>
+                  <Select
+                    labelId="tipo-afilado-filter-label"
+                    value={tipoAfiladoFilter}
+                    onChange={(e) => setTipoAfiladoFilter(e.target.value)}
+                    label="Tipo de Afilado"
+                  >
+                    <MenuItem value="">Todos los tipos</MenuItem>
+                    {tiposAfilado.map((tipo) => (
+                      <MenuItem key={tipo.id} value={tipo.id.toString()}>
+                        {tipo.nombre}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Filtros de fecha */}
+              <Grid item xs={12} md={3}>
+                <TextField
+                  fullWidth
+                  label="Fecha desde"
+                  type="date"
+                  size="small"
+                  value={fechaInicioFilter}
+                  onChange={(e) => setFechaInicioFilter(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={3}>
+                <TextField
+                  fullWidth
+                  label="Fecha hasta"
+                  type="date"
+                  size="small"
+                  value={fechaFinFilter}
+                  onChange={(e) => setFechaFinFilter(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
                 />
               </Grid>
             </Grid>
           </CardContent>
         </Card>
       </TabPanel>
-
-      <TabPanel value={tabValue} index={1}>
-        <Alert severity="info" sx={{ mb: 3 }}>
-          Mostrando afilados pendientes de entrega. Estos afilados requieren registrar su salida cuando sean entregados.
-        </Alert>
-      </TabPanel>
-
-      {sierraParam && (
-        <TabPanel value={tabValue} index={2}>
-          <Alert severity="info" sx={{ mb: 3 }}>
-            Mostrando historial de afilados para la sierra específica.
-          </Alert>
-        </TabPanel>
-      )}
 
       {/* Tabla de afilados */}
       <Card>
@@ -472,12 +706,14 @@ const AfiladoList = () => {
               <Table>
                 <TableHead>
                   <TableRow>
+                    {canManageAfilados && (
+                      <TableCell padding="checkbox"></TableCell>
+                    )}
                     <TableCell>Sierra</TableCell>
                     <TableCell>Tipo de Afilado</TableCell>
                     <TableCell>Cliente / Sucursal</TableCell>
-                    <TableCell>Fecha de Afilado</TableCell>
-                    <TableCell>Fecha de Salida</TableCell>
-                    <TableCell>Responsable</TableCell>
+                    <TableCell>Fecha Ingreso</TableCell>
+                    <TableCell>Fecha Salida</TableCell>
                     <TableCell>Estado</TableCell>
                     <TableCell align="right">Acciones</TableCell>
                   </TableRow>
@@ -486,7 +722,22 @@ const AfiladoList = () => {
                   {filteredAfilados
                     .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                     .map((afilado) => (
-                      <TableRow key={afilado.id}>
+                      <TableRow 
+                        key={afilado.id}
+                        sx={{ 
+                          bgcolor: selectedAfilados.includes(afilado.id) ? 
+                            'rgba(25, 118, 210, 0.08)' : 'transparent',
+                        }}
+                      >
+                        {canManageAfilados && (
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedAfilados.includes(afilado.id)}
+                              onChange={() => handleSelectAfilado(afilado.id)}
+                              disabled={afilado.fecha_salida}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <Box display="flex" alignItems="center">
                             <SierraIcon 
@@ -494,67 +745,80 @@ const AfiladoList = () => {
                               color="secondary" 
                               sx={{ mr: 1 }} 
                             />
-                            <Box>
-                              <Typography fontWeight="medium">
-                                {afilado.sierras?.codigo_barra || afilado.sierras?.codigo || 'N/A'}
-                              </Typography>
-                              <Typography variant="caption" color="textSecondary">
-                                {afilado.sierras?.tipos_sierra?.nombre || 'Tipo no especificado'}
-                              </Typography>
-                            </Box>
+                            <Typography fontWeight="medium">
+                              {afilado.sierras?.codigo_barra || afilado.sierras?.codigo || 'No especificada'}
+                            </Typography>
                           </Box>
                         </TableCell>
                         <TableCell>{afilado.tipos_afilado?.nombre || 'No especificado'}</TableCell>
-                        <TableCell>
-                          {/* Usar el mapa de clientes para mostrar el nombre basado en el cliente_id */}
-                          <Typography fontWeight="medium">
-                            {afilado.sierras?.sucursales?.cliente_id 
-                              ? clientesMap[afilado.sierras.sucursales.cliente_id] || `Cliente ID: ${afilado.sierras.sucursales.cliente_id}` 
-                              : 'N/A'}
-                          </Typography>
-                          <Typography variant="caption" color="textSecondary">
-                            {afilado.sierras?.sucursales?.nombre || 'Sucursal no especificada'}
-                          </Typography>
-                        </TableCell>
+<TableCell>
+  <Box>
+    {afilado.sierras?.sucursales?.clientes?.razon_social ? (
+      <Typography fontWeight="medium">
+        {afilado.sierras.sucursales.clientes.razon_social}
+      </Typography>
+    ) : afilado.sierras?.sucursales?.cliente_id && clientesMap[afilado.sierras.sucursales.cliente_id] ? (
+      <Typography fontWeight="medium">
+        {clientesMap[afilado.sierras.sucursales.cliente_id]}
+      </Typography>
+    ) : (
+      <Typography fontWeight="medium" color="text.secondary">
+        {afilado.sierras?.cliente_nombre || 'Cliente no disponible'}
+      </Typography>
+    )}
+    <Typography variant="caption" color="text.secondary">
+      {afilado.sierras?.sucursales?.nombre || afilado.sierras?.sucursal_nombre || 'Sucursal no especificada'}
+    </Typography>
+  </Box>
+</TableCell>
                         <TableCell>{formatDate(afilado.fecha_afilado)}</TableCell>
                         <TableCell>
-                          {afilado.fecha_salida ? (
-                            formatDate(afilado.fecha_salida)
-                          ) : (
-                            <Chip 
-                              label="Pendiente" 
-                              size="small" 
-                              color="warning" 
-                              variant="outlined"
-                            />
-                          )}
+                          {afilado.fecha_salida ? 
+                            formatDate(afilado.fecha_salida) : 
+                            <Chip size="small" color="warning" label="Pendiente" />
+                          }
                         </TableCell>
-                        <TableCell>{afilado.usuarios?.nombre || 'No especificado'}</TableCell>
                         <TableCell>
                           <Chip 
                             label={afilado.fecha_salida ? 'Completado' : 'Pendiente'} 
                             size="small" 
                             color={afilado.fecha_salida ? 'success' : 'warning'} 
-                            icon={afilado.fecha_salida ? <CompletedIcon /> : <PendingIcon />}
+                            variant={afilado.fecha_salida ? 'filled' : 'outlined'}
                           />
                         </TableCell>
                         <TableCell align="right">
                           <Tooltip title="Ver detalle">
                             <IconButton
                               color="primary"
-                              onClick={() => navigate(`/afilados/${afilado.id}`)}
+                              onClick={() => navigate(clienteFilter ? 
+                                `/mis-afilados/${afilado.id}` : 
+                                `/afilados/${afilado.id}`)}
                             >
                               <ViewIcon />
                             </IconButton>
                           </Tooltip>
                           
                           {!afilado.fecha_salida && canManageAfilados && (
-                            <Tooltip title="Registrar salida">
+                            <Tooltip title="Registrar Salida">
                               <IconButton
                                 color="success"
-                                onClick={() => handleRegistrarSalida(afilado.id)}
+                                onClick={() => handleRegistroSalida(afilado.id)}
                               >
-                                <CompletedIcon />
+                                <CheckIcon />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+
+                          {canManageAfilados && (
+                            <Tooltip title="Editar">
+                              <IconButton
+                                color="info"
+                                onClick={() => navigate(clienteFilter ? 
+                                  `/mis-afilados/${afilado.id}/editar` : 
+                                  `/afilados/${afilado.id}/editar`)}
+                                disabled={afilado.fecha_salida} // No editar si ya tiene salida
+                              >
+                                <EditIcon />
                               </IconButton>
                             </Tooltip>
                           )}
@@ -565,8 +829,8 @@ const AfiladoList = () => {
                   {/* Mensaje cuando no hay resultados */}
                   {filteredAfilados.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} align="center" sx={{ py: 5 }}>
-                        <Typography variant="body1" color="textSecondary">
+                      <TableCell colSpan={canManageAfilados ? 8 : 7} align="center" sx={{ py: 5 }}>
+                        <Typography variant="body1" color="text.secondary">
                           No se encontraron afilados
                         </Typography>
                       </TableCell>
@@ -589,6 +853,29 @@ const AfiladoList = () => {
           )}
         </TableContainer>
       </Card>
+
+      {/* Diálogo de confirmación de registro de salida masiva */}
+      <Dialog
+        open={confirmRegistroSalida}
+        onClose={() => setConfirmRegistroSalida(false)}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">
+          Confirmar Registro de Salida
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            ¿Está seguro de que desea registrar la salida de <strong>{selectedAfilados.length}</strong> afilados? Esta acción no se puede deshacer.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmRegistroSalida(false)}>Cancelar</Button>
+          <Button onClick={confirmRegistroSalidaMasiva} color="success" autoFocus>
+            Confirmar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

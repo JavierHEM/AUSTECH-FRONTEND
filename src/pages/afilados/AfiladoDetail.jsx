@@ -51,7 +51,7 @@ import afiladoService from '../../services/afiladoService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-const AfiladoDetail = () => {
+const AfiladoDetail = ({clienteFilter = false }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -132,18 +132,84 @@ const AfiladoDetail = () => {
     }
   };
 
-  useEffect(() => {
-    loadAfiladoData();
+// useEffect para AfiladoDetail.jsx con verificación de permisos
+useEffect(() => {
+  const loadAfilado = async () => {
+    setLoading(true);
+    setError(null);
     
-    // Limpiar el mensaje de éxito después de unos segundos
-    if (showSuccessMessage) {
-      const timer = setTimeout(() => {
-        setShowSuccessMessage(false);
-      }, 5000);
+    try {
+      // Cargar datos del afilado
+      const afiladoResponse = await afiladoService.getAfiladoById(id);
       
-      return () => clearTimeout(timer);
+      if (afiladoResponse.success) {
+        const afiladoData = afiladoResponse.data;
+        setAfilado(afiladoData);
+        
+        // Si estamos en modo clienteFilter, verificar que el afilado pertenezca al cliente actual
+        if (clienteFilter && user?.cliente_id) {
+          // Obtener el cliente_id de la sierra asociada al afilado
+          const sierraClienteId = afiladoData.sierras?.sucursales?.cliente_id;
+          
+          // Si el cliente_id no coincide con el usuario actual, redirigir a acceso denegado
+          if (sierraClienteId !== user.cliente_id) {
+            console.error("Acceso denegado: El afilado no pertenece al cliente actual");
+            navigate("/acceso-denegado");
+            return;
+          }
+        }
+        
+        // Cargar datos relacionados si es necesario
+        loadRelatedData(afiladoData);
+        
+      } else {
+        setError(afiladoResponse.error || 'Error al cargar el afilado');
+      }
+    } catch (err) {
+      console.error("Error al cargar detalles del afilado:", err);
+      setError('Error al cargar los datos del afilado. Por favor, inténtelo de nuevo.');
+    } finally {
+      setLoading(false);
     }
-  }, [id, reloadCounter, location.state]);
+  };
+  
+  // Función para cargar datos relacionados
+  const loadRelatedData = async (afiladoData) => {
+    try {
+      // Obtener detalles de la sierra asociada al afilado
+      if (afiladoData.sierra_id) {
+        const sierraResponse = await sierraService.getSierraById(afiladoData.sierra_id);
+        if (sierraResponse.success) {
+          setSierra(sierraResponse.data);
+        }
+      }
+      
+      // Cargar catálogos (tipos de afilado, etc.)
+      const tiposAfiladoResponse = await catalogoService.getTiposAfilado();
+      if (tiposAfiladoResponse.success) {
+        setTiposAfilado(tiposAfiladoResponse.data);
+      }
+      
+      // Cargar historial de afilados para la sierra (opcional)
+      if (afiladoData.sierra_id) {
+        const historialResponse = await afiladoService.getAfiladosBySierra(afiladoData.sierra_id);
+        if (historialResponse.success) {
+          // Ordenar historial por fecha (más reciente primero)
+          const historialOrdenado = historialResponse.data
+            .sort((a, b) => new Date(b.fecha_afilado) - new Date(a.fecha_afilado));
+          
+          setHistorialAfilados(historialOrdenado);
+        }
+      }
+    } catch (err) {
+      console.error("Error al cargar datos relacionados:", err);
+    }
+  };
+
+  if (id) {
+    loadAfilado();
+  }
+}, [id, navigate, clienteFilter, user]);
 
   // Función para registrar la salida del afilado
   const handleRegistrarSalida = async () => {
@@ -182,13 +248,13 @@ const AfiladoDetail = () => {
           {error}
         </Alert>
         <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant="contained"
-            startIcon={<ArrowBackIcon />}
-            onClick={() => navigate('/afilados')}
-          >
-            Volver a Afilados
-          </Button>
+        <Button
+          variant="contained"
+          startIcon={<ArrowBackIcon />}
+          onClick={() => navigate(clienteFilter ? '/mis-afilados' : '/afilados')}
+        >
+          Volver a {clienteFilter ? 'Mis Afilados' : 'Afilados'}
+        </Button>
           
           {reloadCounter < 3 && (
             <Button

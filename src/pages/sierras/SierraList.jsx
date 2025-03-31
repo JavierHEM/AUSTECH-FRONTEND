@@ -25,20 +25,22 @@ import {
   MenuItem,
   Select,
   FormControl,
+  FormControlLabel,
+  Switch, 
   InputLabel,
   Breadcrumbs,
   Link as MuiLink,
-  Tabs,
-  Tab,
-  Badge,
-  Switch,
-  FormControlLabel,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
-  DialogTitle
+  DialogTitle,
+  Snackbar,
+  Tabs, 
+  Tab, 
+  Badge 
 } from '@mui/material';
+import MuiAlert from '@mui/material/Alert';
 import { 
   Add as AddIcon,
   Search as SearchIcon,
@@ -52,7 +54,8 @@ import {
   FilterList as FilterIcon,
   QrCode as QrCodeIcon,
   BuildCircle as AfiladoIcon,
-  History as HistoryIcon
+  History as HistoryIcon,
+  Error as ErrorIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -61,27 +64,8 @@ import clienteService from '../../services/clienteService';
 import sucursalService from '../../services/sucursalService';
 import catalogoService from '../../services/catalogoService';
 import afiladoService from '../../services/afiladoService';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 
-// Componente para mostrar un panel con tab
-const TabPanel = (props) => {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`sierra-tabpanel-${index}`}
-      aria-labelledby={`sierra-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ py: 2 }}>{children}</Box>}
-    </div>
-  );
-};
-
-const SierraList = () => {
+const SierraList = ({ clienteFilter = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -100,7 +84,7 @@ const SierraList = () => {
   
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
-  const [clienteFilter, setClienteFilter] = useState('');
+  const [clienteFilterValue, setClienteFilterValue] = useState('');
   const [sucursalFilter, setSucursalFilter] = useState('');
   const [tipoSierraFilter, setTipoSierraFilter] = useState('');
   const [estadoSierraFilter, setEstadoSierraFilter] = useState('');
@@ -110,16 +94,42 @@ const SierraList = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
+  // Notificaciones y mensajes de error mejorados
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info' // 'error', 'warning', 'info', o 'success'
+  });
+  
+  const [errorDialog, setErrorDialog] = useState({
+    open: false,
+    title: '',
+    message: '',
+    sierra: null
+  });
+
   // Estado para manejar si el usuario puede agregar/editar sierras
   const canManageSierras = user?.rol === 'Gerente' || user?.rol === 'Administrador';
   const sucursalParam = searchParams.get('sucursal');
   const clienteParam = searchParams.get('cliente');
 
+  // Función para cerrar el snackbar
+  const handleCloseSnackbar = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbar({...snackbar, open: false});
+  };
+
   // Formatear fecha
   const formatDate = (dateString) => {
     if (!dateString) return 'No registrada';
     try {
-      return format(new Date(dateString), 'dd MMM yyyy', { locale: es });
+      return new Date(dateString).toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
     } catch (error) {
       return dateString;
     }
@@ -128,29 +138,31 @@ const SierraList = () => {
   // Función para cargar los catálogos
   const loadCatalogos = async () => {
     try {
-      // Cargar tipos de sierra
+      // Load sierra types - filter by active status
       const tiposSierraResponse = await catalogoService.getTiposSierra();
       if (tiposSierraResponse.success) {
-        setTiposSierra(tiposSierraResponse.data);
+        // Filter to only include active sierra types
+        const activeTiposSierra = tiposSierraResponse.data.filter(tipo => tipo.activo === true);
+        setTiposSierra(activeTiposSierra);
       }
-
-      // Cargar estados de sierra
+  
+      // Load sierra states
       const estadosSierraResponse = await catalogoService.getEstadosSierra();
       if (estadosSierraResponse.success) {
         setEstadosSierra(estadosSierraResponse.data);
       }
-
-      // Cargar clientes para filtros
+  
+      // Load clients for filters
       const clientesResponse = await clienteService.getAllClientes();
       if (clientesResponse.success) {
         setClientes(clientesResponse.data);
         
-        // Si hay un cliente seleccionado en la URL, cargar sus sucursales
+        // If a client is selected in the URL, load its branches
         if (clienteParam) {
           loadSucursalesByCliente(clienteParam);
-          setClienteFilter(clienteParam);
+          setClienteFilterValue(clienteParam);
         } else {
-          // Cargar todas las sucursales si no hay cliente seleccionado
+          // Load all branches if no client is selected
           const sucursalesResponse = await sucursalService.getAllSucursales();
           if (sucursalesResponse.success) {
             setSucursales(sucursalesResponse.data);
@@ -158,7 +170,7 @@ const SierraList = () => {
         }
       }
       
-      // Si hay una sucursal en la URL, establecerla como filtro
+      // If there's a branch in the URL, set it as a filter
       if (sucursalParam) {
         setSucursalFilter(sucursalParam);
       }
@@ -245,10 +257,10 @@ const SierraList = () => {
 
   // Efecto para cargar sucursales cuando cambia el cliente seleccionado
   useEffect(() => {
-    if (clienteFilter) {
-      loadSucursalesByCliente(clienteFilter);
+    if (clienteFilterValue) {
+      loadSucursalesByCliente(clienteFilterValue);
     }
-  }, [clienteFilter]);
+  }, [clienteFilterValue]);
 
   // Función para manejar el cambio de tab
   const handleTabChange = (event, newValue) => {
@@ -291,8 +303,8 @@ const SierraList = () => {
     const matchesSearch = searchFields.includes(searchTerm.toLowerCase());
     
     // Filtrar por cliente
-    const matchesCliente = clienteFilter === '' || 
-      sierra.sucursales?.cliente_id === parseInt(clienteFilter);
+    const matchesCliente = clienteFilterValue === '' || 
+      sierra.sucursales?.cliente_id === parseInt(clienteFilterValue);
     
     // Filtrar por sucursal
     const matchesSucursal = sucursalFilter === '' || 
@@ -322,18 +334,50 @@ const SierraList = () => {
   const confirmDeleteSierra = async () => {
     if (!confirmDelete) return;
     
+    setLoading(true);
+    
     try {
       const response = await sierraService.deleteSierra(confirmDelete.id);
       if (response.success) {
         loadData(); // Recargar los datos
+        // Mostrar mensaje de éxito
+        setSnackbar({
+          open: true,
+          message: 'Sierra eliminada correctamente',
+          severity: 'success'
+        });
       } else {
-        console.error('Error al eliminar sierra:', response.error);
-        alert('Error al eliminar la sierra: ' + response.error);
+        // Verificar si el error es por afilados asociados
+        if (response.error && (response.error.toLowerCase().includes('afilado') || response.error.toLowerCase().includes('asociad'))) {
+          // Obtener afilados de la sierra para mostrar cantidad
+          const afiladosResponse = await afiladoService.getAfiladosBySierra(confirmDelete.id);
+          const cantidadAfilados = afiladosResponse.success ? afiladosResponse.data.length : 'varios';
+          
+          // Mostrar el diálogo de error mejorado
+          setErrorDialog({
+            open: true,
+            title: 'No se puede eliminar la sierra',
+            message: `La sierra "${confirmDelete.codigo_barra || confirmDelete.codigo}" tiene ${cantidadAfilados} afilado(s) asociado(s) y no puede ser eliminada. Primero debes transferir o eliminar los afilados vinculados a esta sierra.`,
+            sierra: confirmDelete
+          });
+        } else {
+          // Otro tipo de error
+          setSnackbar({
+            open: true,
+            message: response.error || 'Error al eliminar la sierra',
+            severity: 'error'
+          });
+        }
       }
     } catch (err) {
       console.error('Error al eliminar sierra:', err);
-      alert('Error al eliminar la sierra. Por favor, inténtelo de nuevo.');
+      setSnackbar({
+        open: true,
+        message: 'Error al eliminar la sierra. Por favor, inténtelo de nuevo.',
+        severity: 'error'
+      });
     } finally {
+      setLoading(false);
       setConfirmDelete(null);
     }
   };
@@ -436,125 +480,124 @@ const SierraList = () => {
       </Box>
 
       {/* Filtros y búsqueda */}
-      <TabPanel value={tabValue} index={0}>
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={3}>
-                <TextField
-                  fullWidth
-                  placeholder="Buscar sierras..."
-                  variant="outlined"
-                  size="small"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon color="action" />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth size="small">
-                  <InputLabel id="cliente-filter-label">Cliente</InputLabel>
-                  <Select
-                    labelId="cliente-filter-label"
-                    value={clienteFilter}
-                    onChange={(e) => {
-                      setClienteFilter(e.target.value);
-                      setSucursalFilter(''); // Resetear sucursal al cambiar cliente
-                    }}
-                    label="Cliente"
-                  >
-                    <MenuItem value="">Todos los clientes</MenuItem>
-                    {clientes.map((cliente) => (
-                      <MenuItem key={cliente.id} value={cliente.id}>
-                        {cliente.razon_social}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth size="small">
-                  <InputLabel id="sucursal-filter-label">Sucursal</InputLabel>
-                  <Select
-                    labelId="sucursal-filter-label"
-                    value={sucursalFilter}
-                    onChange={(e) => setSucursalFilter(e.target.value)}
-                    label="Sucursal"
-                    disabled={!clienteFilter}
-                  >
-                    <MenuItem value="">Todas las sucursales</MenuItem>
-                    {sucursales
-                      .filter(sucursal => !clienteFilter || sucursal.cliente_id === parseInt(clienteFilter))
-                      .map((sucursal) => (
-                        <MenuItem key={sucursal.id} value={sucursal.id}>
-                          {sucursal.nombre}
-                        </MenuItem>
-                      ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth size="small">
-                  <InputLabel id="tipo-sierra-filter-label">Tipo de Sierra</InputLabel>
-                  <Select
-                    labelId="tipo-sierra-filter-label"
-                    value={tipoSierraFilter}
-                    onChange={(e) => setTipoSierraFilter(e.target.value)}
-                    label="Tipo de Sierra"
-                  >
-                    <MenuItem value="">Todos los tipos</MenuItem>
-                    {tiposSierra.map((tipo) => (
-                      <MenuItem key={tipo.id} value={tipo.id}>
-                        {tipo.nombre}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth size="small">
-                  <InputLabel id="estado-sierra-filter-label">Estado</InputLabel>
-                  <Select
-                    labelId="estado-sierra-filter-label"
-                    value={estadoSierraFilter}
-                    onChange={(e) => setEstadoSierraFilter(e.target.value)}
-                    label="Estado"
-                  >
-                    <MenuItem value="">Todos los estados</MenuItem>
-                    {estadosSierra.map((estado) => (
-                      <MenuItem key={estado.id} value={estado.id}>
-                        {estado.nombre}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12} md={1}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={showActivasOnly}
-                      onChange={(e) => setShowActivasOnly(e.target.checked)}
-                    />
-                  }
-                  label="Sólo activas"
-                />
-              </Grid>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={3}>
+              <TextField
+                fullWidth
+                placeholder="Buscar sierras..."
+                variant="outlined"
+                size="small"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
             </Grid>
-          </CardContent>
-        </Card>
-      </TabPanel>
+
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="cliente-filter-label">Cliente</InputLabel>
+                <Select
+                  labelId="cliente-filter-label"
+                  value={clienteFilterValue}
+                  onChange={(e) => {
+                    setClienteFilterValue(e.target.value);
+                    setSucursalFilter(''); // Resetear sucursal al cambiar cliente
+                  }}
+                  label="Cliente"
+                >
+                  <MenuItem value="">Todos los clientes</MenuItem>
+                  {clientes.map((cliente) => (
+                    <MenuItem key={cliente.id} value={cliente.id}>
+                      {cliente.razon_social}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="sucursal-filter-label">Sucursal</InputLabel>
+                <Select
+                  labelId="sucursal-filter-label"
+                  value={sucursalFilter}
+                  onChange={(e) => setSucursalFilter(e.target.value)}
+                  label="Sucursal"
+                  disabled={!clienteFilterValue}
+                >
+                  <MenuItem value="">Todas las sucursales</MenuItem>
+                  {sucursales
+                    .filter(sucursal => !clienteFilterValue || sucursal.cliente_id === parseInt(clienteFilterValue))
+                    .map((sucursal) => (
+                      <MenuItem key={sucursal.id} value={sucursal.id}>
+                        {sucursal.nombre}
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Type of Sierra Filter */}
+            <Grid item xs={12} md={2}>
+            <FormControl fullWidth size="small">
+                <InputLabel id="tipo-sierra-filter-label">Tipo de Sierra</InputLabel>
+                <Select
+                labelId="tipo-sierra-filter-label"
+                value={tipoSierraFilter}
+                onChange={(e) => setTipoSierraFilter(e.target.value)}
+                label="Tipo de Sierra"
+                >
+                <MenuItem value="">Todos los tipos activos</MenuItem>
+                {tiposSierra.map((tipo) => (
+                    <MenuItem key={tipo.id} value={tipo.id}>
+                    {tipo.nombre}
+                    </MenuItem>
+                ))}
+                </Select>
+            </FormControl>
+            </Grid>
+
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="estado-sierra-filter-label">Estado</InputLabel>
+                <Select
+                  labelId="estado-sierra-filter-label"
+                  value={estadoSierraFilter}
+                  onChange={(e) => setEstadoSierraFilter(e.target.value)}
+                  label="Estado"
+                >
+                  <MenuItem value="">Todos los estados</MenuItem>
+                  {estadosSierra.map((estado) => (
+                    <MenuItem key={estado.id} value={estado.id}>
+                      {estado.nombre}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} md={1}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showActivasOnly}
+                    onChange={(e) => setShowActivasOnly(e.target.checked)}
+                  />
+                }
+                label="Sólo activas"
+              />
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
       {/* Tabla de sierras */}
       <Card>
@@ -731,7 +774,7 @@ const SierraList = () => {
                   }).length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} align="center" sx={{ py: 5 }}>
-                        <Typography variant="body1" color="textSecondary">
+                        <Typography variant="body1" color="text.secondary">
                           No se encontraron sierras
                         </Typography>
                       </TableCell>
@@ -782,6 +825,76 @@ const SierraList = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Diálogo de error mejorado para sierras con afilados */}
+      <Dialog
+        open={errorDialog.open}
+        onClose={() => setErrorDialog({...errorDialog, open: false})}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ 
+          bgcolor: 'error.main', 
+          color: 'error.contrastText',
+          display: 'flex',
+          alignItems: 'center'
+        }}>
+          <ErrorIcon sx={{ mr: 1 }} />
+          {errorDialog.title}
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography paragraph>
+            {errorDialog.message}
+          </Typography>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              ¿Qué desea hacer?
+            </Typography>
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<HistoryIcon />}
+                  onClick={() => {
+                    setErrorDialog({...errorDialog, open: false});
+                    if (errorDialog.sierra) {
+                      navigate(`/afilados?sierra=${errorDialog.sierra.id}`);
+                    }
+                  }}
+                >
+                  Ver afilados de esta sierra
+                </Button>
+              </Grid>
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setErrorDialog({...errorDialog, open: false})}
+            variant="contained"
+          >
+            Aceptar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar para notificaciones */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <MuiAlert 
+          elevation={6} 
+          variant="filled" 
+          severity={snackbar.severity}
+          onClose={handleCloseSnackbar}
+        >
+          {snackbar.message}
+        </MuiAlert>
+      </Snackbar>
     </Box>
   );
 };

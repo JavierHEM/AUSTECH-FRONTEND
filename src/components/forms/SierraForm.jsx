@@ -37,11 +37,7 @@ const validationSchema = yup.object().shape({
   tipo_sierra_id: yup.number().required('El tipo de sierra es requerido'),
   estado_id: yup.number().required('El estado es requerido'),
   sucursal_id: yup.number().required('La sucursal es requerida'),
-  activo: yup.boolean(),
-  ancho: yup.number().positive('El ancho debe ser un valor positivo').nullable().transform(value => (isNaN(value) ? null : value)),
-  largo: yup.number().positive('El largo debe ser un valor positivo').nullable().transform(value => (isNaN(value) ? null : value)),
-  alto: yup.number().positive('El alto debe ser un valor positivo').nullable().transform(value => (isNaN(value) ? null : value)),
-  observaciones: yup.string().nullable()
+  activo: yup.boolean()
 });
 
 const SierraForm = ({ 
@@ -71,12 +67,7 @@ const SierraForm = ({
       tipo_sierra_id: sierra?.tipo_sierra_id || '',
       estado_id: sierra?.estado_id || '',
       sucursal_id: sierra?.sucursal_id || sucursalPreseleccionada || '',
-      activo: sierra ? sierra.activo : true,
-      ancho: sierra?.ancho || '',
-      largo: sierra?.largo || '',
-      alto: sierra?.alto || '',
-      material: sierra?.material || '',
-      observaciones: sierra?.observaciones || ''
+      activo: sierra ? sierra.activo : true
     }
   });
 
@@ -382,95 +373,7 @@ const SierraForm = ({
         </Grid>
       </Grid>
 
-      {/* Especificaciones técnicas */}
-      <Typography variant="subtitle1" fontWeight="medium" sx={{ mt: 3, mb: 1 }}>
-        Especificaciones Técnicas
-      </Typography>
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={3}>
-          <Controller
-            name="ancho"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Ancho (mm)"
-                type="number"
-                fullWidth
-                error={!!errors.ancho}
-                helperText={errors.ancho?.message}
-                InputProps={{ inputProps: { min: 0 } }}
-              />
-            )}
-          />
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Controller
-            name="largo"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Largo (mm)"
-                type="number"
-                fullWidth
-                error={!!errors.largo}
-                helperText={errors.largo?.message}
-                InputProps={{ inputProps: { min: 0 } }}
-              />
-            )}
-          />
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Controller
-            name="alto"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Alto (mm)"
-                type="number"
-                fullWidth
-                error={!!errors.alto}
-                helperText={errors.alto?.message}
-                InputProps={{ inputProps: { min: 0 } }}
-              />
-            )}
-          />
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Controller
-            name="material"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Material"
-                fullWidth
-              />
-            )}
-          />
-        </Grid>
-      </Grid>
 
-      {/* Observaciones */}
-      <Grid container spacing={2} sx={{ mt: 1 }}>
-        <Grid item xs={12}>
-          <Controller
-            name="observaciones"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Observaciones"
-                fullWidth
-                multiline
-                rows={3}
-              />
-            )}
-          />
-        </Grid>
-      </Grid>
 
       {/* Estado activo/inactivo */}
       <Box sx={{ mt: 2 }}>
@@ -501,12 +404,8 @@ const SierraForm = ({
         />
       </Box>
 
-      {/* Mensaje de error */}
-      {error && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {error}
-        </Alert>
-      )}
+
+
 
       {/* Botones de acción */}
       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>

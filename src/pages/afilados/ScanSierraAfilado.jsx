@@ -16,6 +16,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   InputAdornment,
   IconButton,
@@ -36,11 +37,13 @@ import {
   Delete as DeleteIcon,
   FlashOn as FlashOnIcon
 } from '@mui/icons-material';
+import { useAuth } from '../../context/AuthContext';
 import sierraService from '../../services/sierraService';
 import afiladoService from '../../services/afiladoService';
 
-const ScanSierraAfilado = () => {
+const ScanSierraAfilado = ({ clienteFilter = false }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [codigoSierra, setCodigoSierra] = useState('');
   const [sierra, setSierra] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -140,6 +143,19 @@ const ScanSierraAfilado = () => {
       }
       
       const sierraData = response.data;
+      
+      // Verificar permisos para clientes
+      if (clienteFilter && user?.cliente_id) {
+        // Obtener el cliente_id de la sierra
+        const sierraClienteId = sierraData.sucursales?.cliente_id;
+        
+        // Si el cliente_id no coincide con el usuario actual, mostrar error
+        if (sierraClienteId !== user.cliente_id) {
+          setError("No tiene permisos para ver esta sierra. La sierra pertenece a otro cliente.");
+          return;
+        }
+      }
+      
       setSierra(sierraData);
       
       // Validar si la sierra está activa
@@ -201,7 +217,7 @@ const ScanSierraAfilado = () => {
 
   // Navegar al formulario de creación de afilado
   const handleContinuar = () => {
-    navigate('/afilados/nuevo', { 
+    navigate(clienteFilter ? '/mis-afilados/nuevo' : '/afilados/nuevo', { 
       state: { 
         sierraId: sierra.id,
         sierraCodigo: sierra.codigo || sierra.codigo_barra,
@@ -234,7 +250,9 @@ const ScanSierraAfilado = () => {
   // Ver detalle del afilado pendiente
   const handleVerAfiladoPendiente = () => {
     if (lastAfiladoPendiente) {
-      navigate(`/afilados/${lastAfiladoPendiente.id}`);
+      navigate(clienteFilter ? 
+        `/mis-afilados/${lastAfiladoPendiente.id}` : 
+        `/afilados/${lastAfiladoPendiente.id}`);
     }
   };
 
@@ -273,8 +291,8 @@ const ScanSierraAfilado = () => {
         <MuiLink component={Link} to="/" underline="hover" color="inherit">
           Dashboard
         </MuiLink>
-        <MuiLink component={Link} to="/afilados" underline="hover" color="inherit">
-          Afilados
+        <MuiLink component={Link} to={clienteFilter ? "/mis-afilados" : "/afilados"} underline="hover" color="inherit">
+          {clienteFilter ? "Mis Afilados" : "Afilados"}
         </MuiLink>
         <Typography color="text.primary">Escaneo de Sierra</Typography>
       </Breadcrumbs>
@@ -288,9 +306,9 @@ const ScanSierraAfilado = () => {
           variant="outlined"
           startIcon={<ArrowBackIcon />}
           component={Link}
-          to="/afilados"
+          to={clienteFilter ? "/mis-afilados" : "/afilados"}
         >
-          Volver a Afilados
+          Volver a {clienteFilter ? "Mis Afilados" : "Afilados"}
         </Button>
       </Box>
       

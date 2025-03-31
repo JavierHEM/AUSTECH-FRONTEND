@@ -51,7 +51,7 @@ import sierraService from '../../services/sierraService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-const SucursalDetail = () => {
+const SucursalDetail = ({ clienteFilter = false }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -83,6 +83,12 @@ const SucursalDetail = () => {
         }
         setSucursal(sucursalResponse.data);
         
+        // Verificar permisos para clientes
+        if (clienteFilter && user?.cliente_id && sucursalResponse.data.cliente_id !== user.cliente_id) {
+          navigate("/acceso-denegado");
+          return;
+        }
+        
         // Cargar sierras
         const sierrasResponse = await sierraService.getSierrasBySucursal(id);
         if (sierrasResponse.success) {
@@ -97,7 +103,7 @@ const SucursalDetail = () => {
     };
     
     loadSucursalData();
-  }, [id]);
+  }, [id, clienteFilter, user, navigate]);
 
   const handleDelete = async () => {
     setConfirmDelete(false);

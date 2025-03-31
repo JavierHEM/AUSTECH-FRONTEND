@@ -52,9 +52,11 @@ import {
 import { useNavigate, Link } from 'react-router-dom';
 import userService from '../../services/userService';
 import catalogoService from '../../services/catalogoService';
+import { useAuth } from '../../context/AuthContext';
 
 const UserList = () => {
   const navigate = useNavigate();
+  const { user } = useAuth(); // Asegúrate de importar useAuth
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -235,6 +237,17 @@ const UserList = () => {
     }
   };
 
+  // Verificar si el usuario actual puede eliminar al usuario seleccionado
+  const canDeleteUser = (userToCheck) => {
+    // Si el usuario actual es un Gerente, puede eliminar cualquier usuario
+    if (user?.rol === 'Gerente') {
+      return true;
+    }
+    
+    // Para otros casos, mantener la lógica original (no eliminar administradores)
+    return userToCheck.rol !== 'Administrador';
+  };
+
   return (
     <Box>
       {/* Breadcrumbs */}
@@ -339,40 +352,40 @@ const UserList = () => {
                 <TableBody>
                   {filteredUsers
                     .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                    .map((user) => (
+                    .map((userData) => (
                       <TableRow 
-                        key={user.id}
-                        sx={{ opacity: user.activo ? 1 : 0.6 }}
+                        key={userData.id}
+                        sx={{ opacity: userData.activo ? 1 : 0.6 }}
                       >
                         <TableCell>
                           <Box display="flex" alignItems="center">
                             <PersonIcon 
                               sx={{ 
                                 mr: 1,
-                                color: user.activo ? 'primary.main' : 'text.disabled' 
+                                color: userData.activo ? 'primary.main' : 'text.disabled' 
                               }} 
                             />
                             <Typography fontWeight="medium">
-                              {user.nombre}
+                              {userData.nombre}
                             </Typography>
                           </Box>
                         </TableCell>
-                        <TableCell>{user.email}</TableCell>
+                        <TableCell>{userData.email}</TableCell>
                         <TableCell>
                           <Chip 
-                            icon={getRoleIcon(user.rol)} 
-                            label={user.rol} 
-                            color={getRoleColor(user.rol)} 
-                            variant={user.activo ? 'filled' : 'outlined'} 
+                            icon={getRoleIcon(userData.rol)} 
+                            label={userData.rol} 
+                            color={getRoleColor(userData.rol)} 
+                            variant={userData.activo ? 'filled' : 'outlined'} 
                             size="small"
                           />
                         </TableCell>
                         <TableCell>
                           <Chip 
-                            icon={user.activo ? <CheckCircleIcon /> : <BlockIcon />} 
-                            label={user.activo ? 'Activo' : 'Inactivo'} 
-                            color={user.activo ? 'success' : 'default'} 
-                            variant={user.activo ? 'filled' : 'outlined'}
+                            icon={userData.activo ? <CheckCircleIcon /> : <BlockIcon />} 
+                            label={userData.activo ? 'Activo' : 'Inactivo'} 
+                            color={userData.activo ? 'success' : 'default'} 
+                            variant={userData.activo ? 'filled' : 'outlined'}
                             size="small"
                           />
                         </TableCell>
@@ -381,7 +394,7 @@ const UserList = () => {
                             <span>
                               <IconButton
                                 color="primary"
-                                onClick={() => navigate(`/usuarios/${user.id}`)}
+                                onClick={() => navigate(`/usuarios/${userData.id}`)}
                               >
                                 <ViewIcon />
                               </IconButton>
@@ -391,7 +404,7 @@ const UserList = () => {
                           <span>
                               <IconButton
                                 color="secondary"
-                                onClick={() => navigate(`/usuarios/${user.id}/editar`)}
+                                onClick={() => navigate(`/usuarios/${userData.id}/editar`)}
                               >
                                 <EditIcon />
                               </IconButton>
@@ -402,8 +415,8 @@ const UserList = () => {
                           <span>
                               <IconButton
                                 color="error"
-                                onClick={() => handleDeleteUser(user)}
-                                disabled={user.rol === 'Administrador'}
+                                onClick={() => handleDeleteUser(userData)}
+                                disabled={!canDeleteUser(userData)}
                               >
                                 <DeleteIcon />
                               </IconButton>

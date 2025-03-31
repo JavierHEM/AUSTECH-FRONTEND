@@ -30,7 +30,6 @@ const SierraCreate = () => {
   const handleSubmit = async (data) => {
     setLoading(true);
     setError(null);
-    setFormData(data); // Guardar datos para depuración
     
     // Verificar que los campos obligatorios estén presentes
     if (!data.codigo_barra || data.codigo_barra.trim() === '') {
@@ -72,12 +71,26 @@ const SierraCreate = () => {
         return { success: true };
       } else {
         console.error('Error desde el servicio:', response.error);
-        setError(response.error || 'Error al crear la sierra');
+        
+        // Comprobar si el error indica que el código ya existe
+        if (response.error && response.error.toLowerCase().includes('ya existe')) {
+          setError(`El código de sierra '${data.codigo_barra}' ya existe en el sistema. Por favor, utilice otro código.`);
+        } else {
+          setError(response.error || 'Error al crear la sierra');
+        }
+        
         return { success: false };
       }
     } catch (err) {
       console.error('Error al crear sierra:', err);
-      setError('Error al crear la sierra. Por favor, inténtelo de nuevo.');
+      
+      // Comprobar si el error es de código duplicado (esto depende de cómo esté configurado tu backend)
+      if (err.response && err.response.status === 409) {
+        setError(`El código de sierra '${data.codigo_barra}' ya existe en el sistema. Por favor, utilice otro código.`);
+      } else {
+        setError('Error al crear la sierra. Por favor, inténtelo de nuevo.');
+      }
+      
       return { success: false };
     } finally {
       setLoading(false);
@@ -161,11 +174,10 @@ const SierraCreate = () => {
         </Alert>
       )}
 
-      {/* Para depuración - mostrar datos del formulario si hay un error */}
-      {error && formData && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          <Typography variant="subtitle2">Datos del formulario para depuración:</Typography>
-          <pre>{JSON.stringify(formData, null, 2)}</pre>
+      {/* Mostrar mensaje de error si existe */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
         </Alert>
       )}
 

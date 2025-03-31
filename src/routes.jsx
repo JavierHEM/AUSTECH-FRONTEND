@@ -45,12 +45,12 @@ import SierraList from './pages/sierras/SierraList';
 import SierraDetail from './pages/sierras/SierraDetail';
 import SierraCreate from './pages/sierras/SierraCreate';
 import SierraEdit from './pages/sierras/SierraEdit';
-import ScanSierraAfilado from './pages/afilados/ScanSierraAfilado';
 
 // Páginas de afilados
 import AfiladoList from './pages/afilados/AfiladoList';
 import AfiladoCreate from './pages/afilados/AfiladoCreate';
 import AfiladoDetail from './pages/afilados/AfiladoDetail';
+import ScanSierraAfilado from './pages/afilados/ScanSierraAfilado';
 import RegistroSalidaMasiva from './pages/afilados/RegistroSalidaMasiva';
 
 // Componentes temporales para perfil 
@@ -132,11 +132,12 @@ const AppRoutes = () => {
           <Route element={<MainLayout />}>
             {/* Usaremos los mismos componentes pero con parámetros filtrados por cliente */}
             <Route path="/mis-sierras" element={<SierraList clienteFilter={true} />} />
-            <Route path="/mis-sierras/:id" element={<SierraDetail />} />
+            <Route path="/mis-sierras/:id" element={<SierraDetail clienteFilter={true} />} />
             <Route path="/mis-afilados" element={<AfiladoList clienteFilter={true} />} />
-            <Route path="/mis-afilados/:id" element={<AfiladoDetail />} />
+            <Route path="/mis-afilados/:id" element={<AfiladoDetail clienteFilter={true} />} />
+            <Route path="/mis-afilados/escanear" element={<ScanSierraAfilado clienteFilter={true} />} />
             <Route path="/mis-sucursales" element={<SucursalList clienteFilter={true} />} />
-            <Route path="/mis-sucursales/:id" element={<SucursalDetail />} />
+            <Route path="/mis-sucursales/:id" element={<SucursalDetail clienteFilter={true} />} />
             <Route path="/mis-reportes" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Route>
