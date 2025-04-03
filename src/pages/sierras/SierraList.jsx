@@ -721,43 +721,51 @@ const SierraList = ({ clienteFilter = false }) => {
                         </TableCell>
                         <TableCell align="right">
                           <Tooltip title="Ver detalle">
-                            <IconButton
-                              color="primary"
-                              onClick={() => navigate(`/sierras/${sierra.id}`)}
-                            >
-                              <ViewIcon />
-                            </IconButton>
+                            <span>
+                              <IconButton
+                                color="primary"
+                                onClick={() => navigate(`/sierras/${sierra.id}`)}
+                              >
+                                <ViewIcon />
+                              </IconButton>
+                              </span>
                           </Tooltip>
                           
                           <Tooltip title="Registrar Afilado">
-                            <IconButton
-                              color="secondary"
-                              onClick={() => navigate('/afilados/nuevo', {
-                                state: { sierraId: sierra.id, sierraCodigo: sierra.codigo_barra }
-                              })}
-                              disabled={!sierra.activo}
-                            >
-                              <AfiladoIcon />
-                            </IconButton>
+                            <span>
+                              <IconButton
+                                color="secondary"
+                                onClick={() => navigate('/afilados/nuevo', {
+                                  state: { sierraId: sierra.id, sierraCodigo: sierra.codigo_barra }
+                                })}
+                                disabled={!sierra.activo}
+                              >
+                                <AfiladoIcon />
+                              </IconButton>
+                            </span>
                           </Tooltip>
 
                           {canManageSierras && (
                             <>
                               <Tooltip title="Editar">
-                                <IconButton
-                                  color="info"
-                                  onClick={() => navigate(`/sierras/${sierra.id}/editar`)}
-                                >
-                                  <EditIcon />
-                                </IconButton>
+                                <span>
+                                  <IconButton
+                                    color="info"
+                                    onClick={() => navigate(`/sierras/${sierra.id}/editar`)}
+                                  >
+                                    <EditIcon />
+                                  </IconButton>
+                                  </span>
                               </Tooltip>
                               <Tooltip title="Eliminar">
-                                <IconButton
-                                  color="error"
-                                  onClick={() => handleDeleteSierra(sierra)}
-                                >
-                                  <DeleteIcon />
-                                </IconButton>
+                                <span>
+                                  <IconButton
+                                    color="error"
+                                    onClick={() => handleDeleteSierra(sierra)}
+                                  >
+                                    <DeleteIcon />
+                                  </IconButton>
+                                  </span>
                               </Tooltip>
                             </>
                           )}

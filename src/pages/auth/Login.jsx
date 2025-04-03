@@ -344,26 +344,7 @@ const Login = () => {
                     }}
                   />
 
-                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-                    <Fade in={true} timeout={1200}>
-                      <Link 
-                        component={RouterLink} 
-                        to="/recuperar-contrasena" 
-                        variant="body2"
-                        sx={{
-                          color: 'primary.main',
-                          textDecoration: 'none',
-                          transition: 'all 0.2s',
-                          '&:hover': {
-                            color: 'primary.dark',
-                            textDecoration: 'underline'
-                          }
-                        }}
-                      >
-                        ¿Olvidaste tu contraseña?
-                      </Link>
-                    </Fade>
-                  </Box>
+
 
                   <Grow in={true} timeout={1200}>
                     <Button
@@ -398,30 +379,6 @@ const Login = () => {
                       )}
                     </Button>
                   </Grow>
-
-                  <Fade in={true} timeout={1400}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="body2" color="text.secondary">
-                        ¿No tienes una cuenta?{' '}
-                        <Link 
-                          component={RouterLink} 
-                          to="/registro"
-                          sx={{
-                            color: 'primary.main',
-                            textDecoration: 'none',
-                            fontWeight: 'bold',
-                            transition: 'all 0.2s',
-                            '&:hover': {
-                              color: 'primary.dark',
-                              textDecoration: 'underline'
-                            }
-                          }}
-                        >
-                          Regístrate
-                        </Link>
-                      </Typography>
-                    </Box>
-                  </Fade>
                 </Box>
               </Box>
             </Grid>

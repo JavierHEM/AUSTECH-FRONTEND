@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import MainLayout from './components/layout/MainLayout';
 import ReportesRouter from './pages/reportes/ReportesRouter';
+import { useAuth } from './context/AuthContext';
 
 // Páginas comunes
 import NotFound from './pages/common/NotFound';
@@ -25,8 +26,9 @@ import EstadoSierraList from './pages/catalogos/EstadoSierraList';
 // Páginas de autenticación
 import Login from './pages/auth/Login';
 
-// Dashboard
-import Dashboard from './pages/dashboard/Dashboard';
+// Dashboard para diferentes roles
+import Dashboard from './pages/dashboard/Dashboard'; // Dashboard para Gerente/Admin
+import ClientDashboard from './pages/dashboard/ClientDashboard'; // Dashboard para Cliente
 
 // Páginas de clientes
 import ClienteList from './pages/clientes/ClienteList';
@@ -53,6 +55,27 @@ import AfiladoDetail from './pages/afilados/AfiladoDetail';
 import ScanSierraAfilado from './pages/afilados/ScanSierraAfilado';
 import RegistroSalidaMasiva from './pages/afilados/RegistroSalidaMasiva';
 
+// Páginas de reportes
+import ReporteAfiladosCliente from './pages/reportes/ReporteAfiladosCliente';
+
+// Componente para seleccionar el Dashboard según el rol
+const DashboardSelector = () => {
+  const { user } = useAuth();
+  
+  // Normalizar el rol para comparación
+  const userRole = user?.rol?.toLowerCase().trim();
+  
+  console.log("Dashboard Selector - Rol detectado:", userRole);
+  
+  if (userRole === 'cliente') {
+    console.log("Mostrando dashboard para Cliente");
+    return <ClientDashboard />;
+  } else {
+    console.log("Mostrando dashboard para Gerente/Administrador");
+    return <Dashboard />;
+  }
+};
+
 // Componentes temporales para perfil 
 // Estos se pueden reemplazar cuando se creen los componentes reales
 const ProfilePlaceholder = () => <div>Página de Perfil (en construcción)</div>;
@@ -70,7 +93,9 @@ const AppRoutes = () => {
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            
+            {/* Dashboard selector según rol */}
+            <Route path="/dashboard" element={<DashboardSelector />} />
             
             {/* Perfil y configuración personal (todos los usuarios) */}
             <Route path="/perfil" element={<ProfilePlaceholder />} />
@@ -122,8 +147,11 @@ const AppRoutes = () => {
             <Route path="/catalogos/tipos-afilado" element={<TipoAfiladoList />} />
             <Route path="/catalogos/estados-sierra" element={<EstadoSierraList />} />
             
-            {/* Reportes */}
+            {/* Reportes para administradores/gerentes */}
             <Route path="/reportes/*" element={<ReportesRouter />} />
+            
+            {/* Ruta directa para el reporte de afilados */}
+            <Route path="/reportes/afilados" element={<ReporteAfiladosCliente />} />
           </Route>
         </Route>
         
@@ -138,7 +166,7 @@ const AppRoutes = () => {
             <Route path="/mis-afilados/escanear" element={<ScanSierraAfilado clienteFilter={true} />} />
             <Route path="/mis-sucursales" element={<SucursalList clienteFilter={true} />} />
             <Route path="/mis-sucursales/:id" element={<SucursalDetail clienteFilter={true} />} />
-            <Route path="/mis-reportes" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/mis-reportes" element={<ReporteAfiladosCliente clienteFilter={true} />} />
           </Route>
         </Route>
 
