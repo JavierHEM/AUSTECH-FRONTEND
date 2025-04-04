@@ -55,7 +55,8 @@ import {
   LocalShipping as ShippingIcon,
   Check as CheckIcon,
   CheckCircle as CheckCircleIcon,
-  QrCode as QrCodeIcon
+  QrCode as QrCodeIcon,
+  Block as BlockIcon
 } from '@mui/icons-material';
 import { Checkbox } from '@mui/material';
 import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom';
@@ -467,9 +468,25 @@ const AfiladoList = ({ clienteFilter = false }) => {
               >
                 Registro Masivo de Salidas
               </Button>
+              
+              {/* Nuevo botón para marcar último afilado masivo */}
+              {(user?.rol === 'Gerente' || user?.rol === 'Administrador') && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<BlockIcon />}
+                  onClick={() => navigate('/afilados/ultimo-afilado-masivo')}
+                  sx={{ mr: 1 }}
+                >
+                  Marcar Último Afilado Masivo
+                </Button>
+              )}
             </>
           )}
+                    
           
+
+
           {/* Botón para escanear sierra (todos los usuarios autorizados) */}
           {(canManageAfilados || (clienteFilter && user?.rol === 'Cliente')) && (
             <Button

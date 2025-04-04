@@ -54,6 +54,7 @@ import AfiladoCreate from './pages/afilados/AfiladoCreate';
 import AfiladoDetail from './pages/afilados/AfiladoDetail';
 import ScanSierraAfilado from './pages/afilados/ScanSierraAfilado';
 import RegistroSalidaMasiva from './pages/afilados/RegistroSalidaMasiva';
+import UltimoAfiladoMasivo from './pages/afilados/UltimoAfiladoMasivo';
 
 // Páginas de reportes
 import ReporteAfiladosCliente from './pages/reportes/ReporteAfiladosCliente';
@@ -152,6 +153,9 @@ const AppRoutes = () => {
             
             {/* Ruta directa para el reporte de afilados */}
             <Route path="/reportes/afilados" element={<ReporteAfiladosCliente />} />
+
+                {/* Nueva ruta para marcar último afilado masivo */}
+            <Route path="/afilados/ultimo-afilado-masivo" element={<UltimoAfiladoMasivo />} />
           </Route>
         </Route>
         

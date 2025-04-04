@@ -147,4 +147,33 @@ const afiladoService = {
   }
 };
 
+/**
+ * Marca múltiples afilados como "último afilado" de forma masiva
+ * @param {Array} afiladoIds - Array con los IDs de los afilados a marcar
+ * @returns {Promise} - Promesa con el resultado de la operación
+ */
+const marcarUltimoAfiladoMasivo = async (afiladoIds) => {
+  try {
+    const response = await api.post('/afilados/ultimo-afilado-masivo', { afiladoIds });
+    
+    if (response.status === 200) {
+      return { 
+        success: true, 
+        data: response.data 
+      };
+    } else {
+      return { 
+        success: false, 
+        error: response.data.message || 'Error al marcar afilados como último afilado'
+      };
+    }
+  } catch (error) {
+    console.error('Error en marcarUltimoAfiladoMasivo:', error);
+    return { 
+      success: false, 
+      error: error.response?.data?.message || 'Error al conectar con el servidor'
+    };
+  }
+};
+
 export default afiladoService;
